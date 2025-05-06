@@ -1,0 +1,83 @@
+---
+# Blue/Green Deployment Traffic Switch Playbook
+# This playbook switches traffic between blue and green deployments
+
+- name: Switch traffic for blue/green deployment
+  hosts: control_node
+  gather_facts: false
+
+  vars:
+    service_name: "{{ service | default('product-service') }}"
+    target_color: "{{ color | default('blue') }}"
+
+  tasks:
+    - name: Set kubeconfig
+      set_fact:
+        kubeconfig_env:
+          KUBECONFIG: "{{ kube_config_path }}"
+
+    - name: Check current active deployment
+      shell: "{{ current_deployment_check_command }}"
+      environment: "{{ kubeconfig_env }}"
+      register: current_deployment
+      changed_when: false
+
+    - name: Display current active deployment
+      debug:
+        msg: "Current active deployment for {{ service_name }} is {{ current_deployment.stdout }}"
+
+    - name: Determine current color
+      set_fact:
+        current_color: "{{ 'blue' if 'blue' in current_deployment.stdout else 'green' }}"
+
+    - name: Validate target color is different from current color
+      fail:
+        msg: "Target color ({{ target_color }}) is the same as current color ({{ current_color }}). No switch needed."
+      when: target_color == current_color
+
+    - name: Check if target deployment is ready
+      shell: kubectl rollout status deployment/{{ service_name }}-{{ target_color }} -n {{ namespace }} --timeout=10s
+      environment: "{{ kubeconfig_env }}"
+      register: target_deployment_status
+      ignore_errors: true
+
+    - name: Fail if target deployment is not ready
+      fail:
+        msg: "Target deployment {{ service_name }}-{{ target_color }} is not ready. Cannot switch traffic."
+      when: target_deployment_status.rc != 0
+
+    - name: Switch traffic to target deployment
+      shell: |
+        kubectl patch service {{ service_name }} -n {{ namespace }} -p '{"spec":{"selector":{"app":"{{ service_name }}","version":"{{ target_color }}"}}}' --type=merge
+      environment: "{{ kubeconfig_env }}"
+      register: switch_result
+
+    - name: Display switch result
+      debug:
+        var: switch_result.stdout_lines
+
+    - name: Verify switch was successful
+      shell: "{{ current_deployment_check_command }}"
+      environment: "{{ kubeconfig_env }}"
+      register: new_deployment
+      changed_when: false
+
+    - name: Display new active deployment
+      debug:
+        msg: "New active deployment for {{ service_name }} is {{ new_deployment.stdout }}"
+
+    - name: Validate switch was successful
+      fail:
+        msg: "Switch failed. Expected {{ target_color }} but got {{ new_deployment.stdout }}"
+      when: target_color not in new_deployment.stdout
+
+    - name: Run smoke tests against new active deployment
+      shell: |
+        curl -s http://{{ service_name }}.{{ namespace }}.svc.cluster.local/health
+      environment: "{{ kubeconfig_env }}"
+      register: smoke_test_result
+      changed_when: false
+
+    - name: Display smoke test result
+      debug:
+        var: smoke_test_result.stdout_lines

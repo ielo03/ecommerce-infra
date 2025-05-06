@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blue-green-config
+data:
+  product-service: blue
+  order-service: blue
+  user-service: blue
+  api-gateway: blue

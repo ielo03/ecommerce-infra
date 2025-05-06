@@ -1,0 +1,14 @@
+[control_node]
+control-qa ansible_host=control-qa.example.com
+
+[eks_nodes]
+eks-qa-node-1 ansible_host=10.0.1.101
+eks-qa-node-2 ansible_host=10.0.1.102
+
+[bastion]
+bastion-qa ansible_host=bastion-qa.example.com
+
+[qa:children]
+control_node
+eks_nodes
+bastion

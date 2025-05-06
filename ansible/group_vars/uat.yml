@@ -1,0 +1,22 @@
+---
+# UAT Environment Variables
+env_name: uat
+kubernetes_cluster: ecommerce-eks-uat
+aws_region: us-west-2
+
+# Kubernetes configuration
+kube_config_path: ~/.kube/config-uat
+namespace: ecommerce-uat
+
+# Docker registry
+ecr_repository_prefix: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com/uat-"
+
+# Blue/Green deployment
+current_deployment_check_command: "kubectl get service product-service -n {{ namespace }} -o jsonpath='{.spec.selector.version}'"
+
+# Monitoring
+prometheus_endpoint: "prometheus.{{ namespace }}.svc.cluster.local:9090"
+grafana_endpoint: "grafana.{{ namespace }}.svc.cluster.local:3000"
+
+# Ansible variables
+ansible_python_interpreter: /usr/bin/python3

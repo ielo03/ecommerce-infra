@@ -1,0 +1,59 @@
+---
+# Apply Kubernetes Manifests Playbook
+# This playbook applies Kubernetes manifests for the specified environment
+
+- name: Apply Kubernetes manifests
+  hosts: control_node
+  gather_facts: false
+
+  vars:
+    service_name: "{{ service | default('all') }}"
+
+  tasks:
+    - name: Set kubeconfig
+      set_fact:
+        kubeconfig_env:
+          KUBECONFIG: "{{ kube_config_path }}"
+
+    - name: Check if kubectl is configured correctly
+      shell: kubectl cluster-info
+      environment: "{{ kubeconfig_env }}"
+      register: cluster_info
+      changed_when: false
+
+    - name: Display cluster info
+      debug:
+        var: cluster_info.stdout_lines
+
+    - name: Apply all manifests when service is 'all'
+      block:
+        - name: Apply all Kubernetes manifests
+          shell: kubectl apply -k /path/to/ecommerce-infra/kubernetes/overlays/{{ env_name }}
+          environment: "{{ kubeconfig_env }}"
+          register: apply_all_result
+
+        - name: Display apply all result
+          debug:
+            var: apply_all_result.stdout_lines
+      when: service_name == 'all'
+
+    - name: Apply specific service manifests
+      block:
+        - name: Apply service-specific Kubernetes manifests
+          shell: kubectl apply -k /path/to/ecommerce-infra/kubernetes/overlays/{{ env_name }}/{{ service_name }}
+          environment: "{{ kubeconfig_env }}"
+          register: apply_service_result
+
+        - name: Display apply service result
+          debug:
+            var: apply_service_result.stdout_lines
+      when: service_name != 'all'
+
+    - name: Wait for deployments to be ready
+      shell: |
+        kubectl rollout status deployment/{{ item }}-blue -n {{ namespace }} --timeout=300s
+        kubectl rollout status deployment/{{ item }}-green -n {{ namespace }} --timeout=300s
+      environment: "{{ kubeconfig_env }}"
+      with_items:
+        - "{{ [service_name] if service_name != 'all' else ['product-service', 'order-service', 'user-service', 'api-gateway'] }}"
+      when: item != 'all'

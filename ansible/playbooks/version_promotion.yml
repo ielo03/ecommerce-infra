@@ -1,0 +1,84 @@
+---
+# Version Promotion Playbook
+# This playbook promotes a service version from one environment to another
+
+- name: Promote service version
+  hosts: control_node
+  gather_facts: false
+
+  vars:
+    service_name: "{{ service | default('product-service') }}"
+    source_env: "{{ source | default('qa') }}"
+    target_env: "{{ target | default('uat') }}"
+    version_file: "/path/to/version.json"
+
+  tasks:
+    - name: Validate environments
+      fail:
+        msg: "Invalid environment combination. Cannot promote from {{ source_env }} to {{ target_env }}."
+      when: >
+        (source_env == target_env) or
+        (source_env == 'prod') or
+        (source_env == 'qa' and target_env == 'prod')
+
+    - name: Read version.json
+      slurp:
+        src: "{{ version_file }}"
+      register: version_file_content
+
+    - name: Parse version.json
+      set_fact:
+        version_data: "{{ version_file_content.content | b64decode | from_json }}"
+
+    - name: Get current versions
+      set_fact:
+        source_version: "{{ version_data.services[service_name][source_env] }}"
+        target_current_version: "{{ version_data.services[service_name][target_env] }}"
+
+    - name: Display current versions
+      debug:
+        msg:
+          - "Current {{ source_env }} version: {{ source_version }}"
+          - "Current {{ target_env }} version: {{ target_current_version }}"
+
+    - name: Set ECR repository variables
+      set_fact:
+        source_repo: "{{ source_env }}-{{ service_name }}"
+        target_repo: "{{ target_env }}-{{ service_name }}"
+        aws_account_id: "{{ lookup('env', 'AWS_ACCOUNT_ID') }}"
+        aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-west-2') }}"
+
+    - name: Set image URIs
+      set_fact:
+        source_image_uri: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ source_repo }}:{{ source_version }}"
+        target_image_uri: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ target_repo }}:{{ source_version }}"
+
+    - name: Pull source image
+      shell: docker pull {{ source_image_uri }}
+      register: pull_result
+
+    - name: Tag image for target repository
+      shell: docker tag {{ source_image_uri }} {{ target_image_uri }}
+      when: pull_result.rc == 0
+
+    - name: Push image to target repository
+      shell: docker push {{ target_image_uri }}
+      register: push_result
+
+    - name: Update version.json
+      copy:
+        content: "{{ version_data | combine({'services': {service_name: {target_env: source_version}}, 'last_updated': ansible_date_time.iso8601}) | to_nice_json }}"
+        dest: "{{ version_file }}"
+      when: push_result.rc == 0
+
+    - name: Display promotion result
+      debug:
+        msg: "Successfully promoted {{ service_name }} from {{ source_env }} ({{ source_version }}) to {{ target_env }}"
+      when: push_result.rc == 0
+
+    - name: Update Kubernetes manifests
+      include_tasks: apply_kubernetes_manifests.yml
+      vars:
+        env_name: "{{ target_env }}"
+        service: "{{ service_name }}"
+      when: push_result.rc == 0

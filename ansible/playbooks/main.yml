@@ -1,0 +1,58 @@
+---
+# Main Playbook
+# This playbook orchestrates the entire deployment process
+
+- name: Deploy E-Commerce Application
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    environment: "{{ env | default('qa') }}"
+    service_name: "{{ service | default('all') }}"
+    action: "{{ action_type | default('deploy') }}"
+    target_color: "{{ color | default('blue') }}"
+
+  tasks:
+    - name: Validate environment
+      fail:
+        msg: "Invalid environment: {{ environment }}. Must be one of: qa, uat, prod."
+      when: environment not in ['qa', 'uat', 'prod']
+
+    - name: Validate service
+      fail:
+        msg: "Invalid service: {{ service_name }}. Must be one of: all, product-service, order-service, user-service, api-gateway."
+      when: service_name not in ['all', 'product-service', 'order-service', 'user-service', 'api-gateway']
+
+    - name: Validate action
+      fail:
+        msg: "Invalid action: {{ action }}. Must be one of: deploy, configure, switch, promote."
+      when: action not in ['deploy', 'configure', 'switch', 'promote']
+
+    - name: Configure EC2 instances
+      include_playbook: ec2_configuration.yml
+      vars:
+        env_name: "{{ environment }}"
+      when: action == 'configure'
+
+    - name: Deploy Kubernetes manifests
+      include_playbook: apply_kubernetes_manifests.yml
+      vars:
+        env_name: "{{ environment }}"
+        service: "{{ service_name }}"
+      when: action == 'deploy'
+
+    - name: Switch blue/green deployment
+      include_playbook: blue_green_switch.yml
+      vars:
+        env_name: "{{ environment }}"
+        service: "{{ service_name }}"
+        color: "{{ target_color }}"
+      when: action == 'switch'
+
+    - name: Promote version
+      include_playbook: version_promotion.yml
+      vars:
+        service: "{{ service_name }}"
+        source: "{{ source_env | default('qa') }}"
+        target: "{{ target_env | default('uat') }}"
+      when: action == 'promote'

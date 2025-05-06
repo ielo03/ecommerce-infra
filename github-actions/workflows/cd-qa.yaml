@@ -1,0 +1,123 @@
+name: Deploy to QA
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    strategy:
+      matrix:
+        service: [product-service, order-service, user-service, api-gateway]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible boto3
+
+      - name: Get version from version.json
+        id: get-version
+        run: |
+          VERSION=$(jq -r '.services."${{ matrix.service }}".qa' version.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Determine inactive environment using Ansible
+        id: get-target
+        run: |
+          # Create temporary inventory file
+          echo "[control_node]" > inventory.ini
+          echo "localhost ansible_connection=local" >> inventory.ini
+
+          # Run Ansible playbook to determine inactive environment
+          ACTIVE_COLOR=$(ansible-playbook -i inventory.ini ecommerce-infra/ansible/playbooks/blue_green_switch.yml \
+            --tags="check_only" \
+            -e "env_name=qa service=${{ matrix.service }}" \
+            -v | grep -oP "Current active deployment for .* is \K(blue|green)")
+
+          if [ "$ACTIVE_COLOR" == "blue" ]; then
+            echo "target_color=green" >> $GITHUB_OUTPUT
+          else
+            echo "target_color=blue" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to inactive environment using Ansible
+        run: |
+          # Create temporary inventory file
+          echo "[control_node]" > inventory.ini
+          echo "localhost ansible_connection=local" >> inventory.ini
+
+          # Set environment variables for Ansible
+          export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          export ECR_REPOSITORY=${{ matrix.service }}
+          export IMAGE_TAG=${{ github.sha }}
+
+          # Run Ansible playbook to deploy
+          ansible-playbook -i inventory.ini ecommerce-infra/ansible/playbooks/apply_kubernetes_manifests.yml \
+            -e "env_name=qa service=${{ matrix.service }} target_color=${{ steps.get-target.outputs.target_color }} \
+                image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Run health checks using Ansible
+        run: |
+          ansible-playbook -i inventory.ini ecommerce-infra/ansible/playbooks/blue_green_switch.yml \
+            --tags="health_check" \
+            -e "env_name=qa service=${{ matrix.service }} color=${{ steps.get-target.outputs.target_color }}"
+
+      - name: Switch traffic using Ansible
+        run: |
+          ansible-playbook -i inventory.ini ecommerce-infra/ansible/playbooks/blue_green_switch.yml \
+            -e "env_name=qa service=${{ matrix.service }} color=${{ steps.get-target.outputs.target_color }}"
+
+      - name: Run smoke tests using Ansible
+        run: |
+          ansible-playbook -i inventory.ini ecommerce-infra/ansible/playbooks/blue_green_switch.yml \
+            --tags="smoke_test" \
+            -e "env_name=qa service=${{ matrix.service }}"
+
+      - name: Notify on success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ Successfully deployed ${{ matrix.service }} version ${{ steps.get-version.outputs.version }} to QA environment using Ansible automation"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "❌ Failed to deploy ${{ matrix.service }} to QA environment"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

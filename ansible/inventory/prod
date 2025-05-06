@@ -1,0 +1,15 @@
+[control_node]
+control-prod ansible_host=control-prod.example.com
+
+[eks_nodes]
+eks-prod-node-1 ansible_host=10.0.3.101
+eks-prod-node-2 ansible_host=10.0.3.102
+eks-prod-node-3 ansible_host=10.0.3.103
+
+[bastion]
+bastion-prod ansible_host=bastion-prod.example.com
+
+[prod:children]
+control_node
+eks_nodes
+bastion

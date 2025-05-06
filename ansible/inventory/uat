@@ -1,0 +1,14 @@
+[control_node]
+control-uat ansible_host=control-uat.example.com
+
+[eks_nodes]
+eks-uat-node-1 ansible_host=10.0.2.101
+eks-uat-node-2 ansible_host=10.0.2.102
+
+[bastion]
+bastion-uat ansible_host=bastion-uat.example.com
+
+[uat:children]
+control_node
+eks_nodes
+bastion
