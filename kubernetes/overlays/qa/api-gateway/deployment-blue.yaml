@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-blue
+  namespace: ecommerce-qa
+  labels:
+    app: api-gateway
+    version: blue
+    environment: qa
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: ecommerce-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+      version: blue
+      environment: qa
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        version: blue
+        environment: qa
+        app.kubernetes.io/name: api-gateway
+        app.kubernetes.io/part-of: ecommerce-platform
+    spec:
+      containers:
+        - name: api-gateway
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ecommerce-qa/api-gateway:${VERSION}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_ENV
+              value: "qa"
+            - name: PRODUCT_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: product_service_url
+            - name: ORDER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: order_service_url
+            - name: USER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: user_service_url
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: log_level
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secrets
+                  key: jwt_secret
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "300m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

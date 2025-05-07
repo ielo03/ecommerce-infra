@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ecommerce-qa
+
+resources:
+  - deployment-blue.yaml
+  - deployment-green.yaml
+  - service.yaml
+  - service-blue.yaml
+  - service-green.yaml
+
+commonLabels:
+  environment: qa
+  app.kubernetes.io/name: order-service
+  app.kubernetes.io/part-of: ecommerce-platform
