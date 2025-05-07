@@ -6,54 +6,7 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      changed_services: ${{ steps.check-changes.outputs.changed_services }}
-      any_changes: ${{ steps.check-changes.outputs.any_changes }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0 # Fetch all history for proper change detection
-
-      - name: Check for changes in microservices
-        id: check-changes
-        run: |
-          # Get the commit hash from 24 hours ago
-          YESTERDAY_COMMIT=$(git rev-list -n 1 --before="24 hours ago" HEAD)
-
-          # Initialize variables
-          CHANGED_SERVICES=()
-
-          # Check each service directory for changes
-          for SERVICE in product-service order-service user-service api-gateway; do
-            # Check if there are any changes in the service directory
-            if git diff --name-only $YESTERDAY_COMMIT HEAD -- ecommerce-microservices/$SERVICE | grep -q .; then
-              CHANGED_SERVICES+=("$SERVICE")
-              echo "$SERVICE has changes"
-            else
-              echo "$SERVICE has no changes"
-            fi
-          done
-
-          # Convert array to JSON
-          CHANGED_JSON=$(printf '%s\n' "${CHANGED_SERVICES[@]}" | jq -R . | jq -s .)
-          echo "changed_services=$CHANGED_JSON" >> $GITHUB_OUTPUT
-
-          # Set flag if any services changed
-          if [ ${#CHANGED_SERVICES[@]} -gt 0 ]; then
-            echo "any_changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "any_changes=false" >> $GITHUB_OUTPUT
-          fi
-
-          echo "Changed services: $CHANGED_JSON"
-
   build-and-test:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.any_changes == 'true'
     runs-on: ubuntu-latest
 
     strategy:
