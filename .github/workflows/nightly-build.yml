@@ -53,7 +53,6 @@ jobs:
           fi
 
   build-product-service:
-    needs: detect-changes
     if: needs.detect-changes.outputs.product-service-changed == 'true'
     runs-on: ubuntu-latest
 
