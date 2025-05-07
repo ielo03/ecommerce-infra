@@ -1,0 +1,161 @@
+name: QA Environment Smoke Tests
+
+on:
+  # Run after deployment to QA
+  workflow_run:
+    workflows: ["Deploy to QA"]
+    types:
+      - completed
+
+  # Run when triggered by the CD workflow
+  repository_dispatch:
+    types: [run-smoke-tests]
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      api_endpoint:
+        description: "API Gateway endpoint URL"
+        required: false
+        default: "http://api-gateway.qa.svc.cluster.local"
+      service:
+        description: "Service to test (leave empty to test all)"
+        required: false
+        type: choice
+        options:
+          - "all"
+          - "product-service"
+          - "order-service"
+          - "user-service"
+          - "api-gateway"
+        default: "all"
+
+jobs:
+  smoke-test:
+    name: Run Smoke Tests
+    runs-on: ubuntu-latest
+    # Only run if the deployment was successful or manually triggered
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "latest"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ecommerce-qa-cluster --region ${{ secrets.AWS_REGION }}
+
+      - name: Get API Gateway endpoint
+        id: get-endpoint
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.api_endpoint }}" ]]; then
+            echo "API_ENDPOINT=${{ github.event.inputs.api_endpoint }}" >> $GITHUB_ENV
+          else
+            # Get the API Gateway endpoint from the LoadBalancer service
+            ENDPOINT=$(kubectl get svc api-gateway -n ecommerce-qa -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            if [ -z "$ENDPOINT" ]; then
+              ENDPOINT=$(kubectl get svc api-gateway -n ecommerce-qa -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            fi
+            
+            if [ -z "$ENDPOINT" ]; then
+              echo "Failed to get API Gateway endpoint"
+              exit 1
+            fi
+            
+            echo "API_ENDPOINT=http://$ENDPOINT" >> $GITHUB_ENV
+          fi
+
+          echo "Using API endpoint: $API_ENDPOINT"
+
+      - name: Set service to test
+        id: set-service
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "SERVICE=${{ github.event.inputs.service }}" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "repository_dispatch" && -n "${{ github.event.client_payload.service }}" ]]; then
+            echo "SERVICE=${{ github.event.client_payload.service }}" >> $GITHUB_ENV
+          else
+            echo "SERVICE=all" >> $GITHUB_ENV
+          fi
+
+          echo "Testing service: $SERVICE"
+
+      - name: Run smoke tests
+        run: |
+          chmod +x ./scripts/qa/smoke-test.sh
+          if [[ "$SERVICE" == "all" ]]; then
+            ./scripts/qa/smoke-test.sh ${{ env.API_ENDPOINT }}
+          else
+            ./scripts/qa/smoke-test.sh ${{ env.API_ENDPOINT }} $SERVICE
+          fi
+
+      - name: Update version status on success
+        if: success() && env.SERVICE != 'all'
+        run: |
+          # Get current version
+          VERSION=$(jq -r '.services."'$SERVICE'".qa' version.json)
+
+          # Update version.json to mark as verified
+          jq '.services."'$SERVICE'".qa_verified = true' version.json > version.json.new
+          mv version.json.new version.json
+
+          # Commit and push version file update
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add version.json
+          git commit -m "Mark $SERVICE version $VERSION as verified in QA"
+          git push
+
+      - name: Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "❌ QA Smoke Tests Failed!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "❌ *QA Smoke Tests Failed!*\n\nEnvironment: QA\nService: ${{ env.SERVICE }}\nWorkflow: ${{ github.workflow }}\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_id }}>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Notify on success
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "✅ QA Smoke Tests Passed!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "✅ *QA Smoke Tests Passed!*\n\nEnvironment: QA\nService: ${{ env.SERVICE }}\nWorkflow: ${{ github.workflow }}\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_id }}>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
