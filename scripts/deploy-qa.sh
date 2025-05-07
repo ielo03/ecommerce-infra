@@ -113,101 +113,6 @@ if [ ! -d "${REPO_ROOT}/kubernetes/overlays/qa/api-gateway" ]; then
   mkdir -p "${REPO_ROOT}/kubernetes/overlays/qa/api-gateway"
 fi
 
-# Create kustomization files if they don't exist
-echo "Creating kustomization files if they don't exist..."
-
-# Create product-service kustomization file
-if [ ! -f "${REPO_ROOT}/kubernetes/overlays/qa/product-service/kustomization.yaml" ]; then
-  echo "Creating product-service kustomization file..."
-  cat > "${REPO_ROOT}/kubernetes/overlays/qa/product-service/kustomization.yaml" << EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-namespace: ecommerce-qa
-
-resources:
-  - deployment-blue.yaml
-  - deployment-green.yaml
-  - service.yaml
-  - service-blue.yaml
-  - service-green.yaml
-
-commonLabels:
-  environment: qa
-  app.kubernetes.io/name: product-service
-  app.kubernetes.io/part-of: ecommerce-platform
-EOF
-fi
-
-# Create order-service kustomization file
-if [ ! -f "${REPO_ROOT}/kubernetes/overlays/qa/order-service/kustomization.yaml" ]; then
-  echo "Creating order-service kustomization file..."
-  cat > "${REPO_ROOT}/kubernetes/overlays/qa/order-service/kustomization.yaml" << EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-namespace: ecommerce-qa
-
-resources:
-  - deployment-blue.yaml
-  - deployment-green.yaml
-  - service.yaml
-  - service-blue.yaml
-  - service-green.yaml
-
-commonLabels:
-  environment: qa
-  app.kubernetes.io/name: order-service
-  app.kubernetes.io/part-of: ecommerce-platform
-EOF
-fi
-
-# Create user-service kustomization file
-if [ ! -f "${REPO_ROOT}/kubernetes/overlays/qa/user-service/kustomization.yaml" ]; then
-  echo "Creating user-service kustomization file..."
-  cat > "${REPO_ROOT}/kubernetes/overlays/qa/user-service/kustomization.yaml" << EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-namespace: ecommerce-qa
-
-resources:
-  - deployment-blue.yaml
-  - deployment-green.yaml
-  - service.yaml
-  - service-blue.yaml
-  - service-green.yaml
-
-commonLabels:
-  environment: qa
-  app.kubernetes.io/name: user-service
-  app.kubernetes.io/part-of: ecommerce-platform
-EOF
-fi
-
-# Create api-gateway kustomization file
-if [ ! -f "${REPO_ROOT}/kubernetes/overlays/qa/api-gateway/kustomization.yaml" ]; then
-  echo "Creating api-gateway kustomization file..."
-  cat > "${REPO_ROOT}/kubernetes/overlays/qa/api-gateway/kustomization.yaml" << EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-namespace: ecommerce-qa
-
-resources:
-  - deployment-blue.yaml
-  - deployment-green.yaml
-  - service.yaml
-  - service-blue.yaml
-  - service-green.yaml
-
-commonLabels:
-  environment: qa
-  app.kubernetes.io/name: api-gateway
-  app.kubernetes.io/part-of: ecommerce-platform
-EOF
-fi
-
 # Create deployment files if they don't exist
 echo "Creating deployment files if they don't exist..."
 
@@ -220,17 +125,27 @@ kind: Deployment
 metadata:
   name: product-service-blue
   namespace: ecommerce-qa
+  labels:
+    app: product-service
+    version: blue
+    environment: qa
+    app.kubernetes.io/name: product-service
+    app.kubernetes.io/part-of: ecommerce-platform
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: product-service
       version: blue
+      environment: qa
   template:
     metadata:
       labels:
         app: product-service
         version: blue
+        environment: qa
+        app.kubernetes.io/name: product-service
+        app.kubernetes.io/part-of: ecommerce-platform
     spec:
       containers:
       - name: product-service
@@ -305,17 +220,27 @@ kind: Deployment
 metadata:
   name: product-service-green
   namespace: ecommerce-qa
+  labels:
+    app: product-service
+    version: green
+    environment: qa
+    app.kubernetes.io/name: product-service
+    app.kubernetes.io/part-of: ecommerce-platform
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: product-service
       version: green
+      environment: qa
   template:
     metadata:
       labels:
         app: product-service
         version: green
+        environment: qa
+        app.kubernetes.io/name: product-service
+        app.kubernetes.io/part-of: ecommerce-platform
     spec:
       containers:
       - name: product-service
@@ -390,6 +315,11 @@ kind: Service
 metadata:
   name: product-service
   namespace: ecommerce-qa
+  labels:
+    app: product-service
+    environment: qa
+    app.kubernetes.io/name: product-service
+    app.kubernetes.io/part-of: ecommerce-platform
   annotations:
     service.kubernetes.io/active-version: "blue"
     prometheus.io/scrape: "true"
@@ -399,6 +329,7 @@ spec:
   selector:
     app: product-service
     version: blue
+    environment: qa
   ports:
   - port: 8080
     targetPort: 8080
@@ -415,10 +346,17 @@ kind: Service
 metadata:
   name: product-service-blue
   namespace: ecommerce-qa
+  labels:
+    app: product-service
+    version: blue
+    environment: qa
+    app.kubernetes.io/name: product-service
+    app.kubernetes.io/part-of: ecommerce-platform
 spec:
   selector:
     app: product-service
     version: blue
+    environment: qa
   ports:
   - port: 8080
     targetPort: 8080
@@ -435,10 +373,17 @@ kind: Service
 metadata:
   name: product-service-green
   namespace: ecommerce-qa
+  labels:
+    app: product-service
+    version: green
+    environment: qa
+    app.kubernetes.io/name: product-service
+    app.kubernetes.io/part-of: ecommerce-platform
 spec:
   selector:
     app: product-service
     version: green
+    environment: qa
   ports:
   - port: 8080
     targetPort: 8080
@@ -448,38 +393,13 @@ fi
 
 # Create similar files for other services...
 
-# Create QA namespace kustomization file
-if [ ! -f "${REPO_ROOT}/kubernetes/overlays/qa/kustomization.yaml" ]; then
-  echo "Creating QA namespace kustomization file..."
-  cat > "${REPO_ROOT}/kubernetes/overlays/qa/kustomization.yaml" << EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - namespace.yaml
-  - product-service
-  - order-service
-  - user-service
-  - api-gateway
-
-namespace: ecommerce-qa
-EOF
-fi
-
-# Create QA namespace file
-if [ ! -f "${REPO_ROOT}/kubernetes/overlays/qa/namespace.yaml" ]; then
-  echo "Creating QA namespace file..."
-  cat > "${REPO_ROOT}/kubernetes/overlays/qa/namespace.yaml" << EOF
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: ecommerce-qa
-EOF
-fi
-
 # Apply the Kubernetes manifests
 echo "Applying Kubernetes manifests..."
-kubectl apply -k "${REPO_ROOT}/kubernetes/overlays/qa/product-service"
+kubectl apply -f "${REPO_ROOT}/kubernetes/overlays/qa/product-service/deployment-blue.yaml"
+kubectl apply -f "${REPO_ROOT}/kubernetes/overlays/qa/product-service/deployment-green.yaml"
+kubectl apply -f "${REPO_ROOT}/kubernetes/overlays/qa/product-service/service.yaml"
+kubectl apply -f "${REPO_ROOT}/kubernetes/overlays/qa/product-service/service-blue.yaml"
+kubectl apply -f "${REPO_ROOT}/kubernetes/overlays/qa/product-service/service-green.yaml"
 
 # Wait for deployments to be ready
 echo "Waiting for deployments to be ready..."
