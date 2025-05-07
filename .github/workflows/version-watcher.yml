@@ -1,0 +1,145 @@
+name: Version Watcher
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "version.json"
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      qa-changes: ${{ steps.check-qa.outputs.changes }}
+      uat-changes: ${{ steps.check-uat.outputs.changes }}
+      prod-changes: ${{ steps.check-prod.outputs.changes }}
+      qa-services: ${{ steps.check-qa.outputs.services }}
+      uat-services: ${{ steps.check-uat.outputs.services }}
+      prod-services: ${{ steps.check-prod.outputs.services }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Check for QA changes
+        id: check-qa
+        run: |
+          CHANGES=$(git diff HEAD^ HEAD -- version.json | grep -E '"qa": "' || echo "")
+          if [ -n "$CHANGES" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            SERVICES=$(echo "$CHANGES" | grep -oE '"[^"]+": {' | sed 's/": {//' | sed 's/"//g' | tr '\n' ',' | sed 's/,$//')
+            echo "services=$SERVICES" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "services=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for UAT changes
+        id: check-uat
+        run: |
+          CHANGES=$(git diff HEAD^ HEAD -- version.json | grep -E '"uat": "' || echo "")
+          if [ -n "$CHANGES" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            SERVICES=$(echo "$CHANGES" | grep -oE '"[^"]+": {' | sed 's/": {//' | sed 's/"//g' | tr '\n' ',' | sed 's/,$//')
+            echo "services=$SERVICES" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "services=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for Production changes
+        id: check-prod
+        run: |
+          CHANGES=$(git diff HEAD^ HEAD -- version.json | grep -E '"prod": "' || echo "")
+          if [ -n "$CHANGES" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            SERVICES=$(echo "$CHANGES" | grep -oE '"[^"]+": {' | sed 's/": {//' | sed 's/"//g' | tr '\n' ',' | sed 's/,$//')
+            echo "services=$SERVICES" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "services=" >> $GITHUB_OUTPUT
+          fi
+
+  deploy-qa:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.qa-changes == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ecommerce-eks-qa --region us-west-2
+
+      - name: Deploy to QA
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ needs.detect-changes.outputs.qa-services }}"
+          for SERVICE in "${SERVICES[@]}"; do
+            echo "Deploying $SERVICE to QA environment..."
+            ./scripts/deploy-qa.sh $SERVICE
+          done
+
+  deploy-uat:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.uat-changes == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ecommerce-eks-uat --region us-west-2
+
+      - name: Deploy to UAT
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ needs.detect-changes.outputs.uat-services }}"
+          for SERVICE in "${SERVICES[@]}"; do
+            echo "Deploying $SERVICE to UAT environment..."
+            ./scripts/deploy-uat.sh $SERVICE
+          done
+
+  deploy-prod:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prod-changes == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ecommerce-eks-prod --region us-west-2
+
+      - name: Deploy to Production
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ needs.detect-changes.outputs.prod-services }}"
+          for SERVICE in "${SERVICES[@]}"; do
+            echo "Deploying $SERVICE to Production environment..."
+            ./scripts/deploy-prod.sh $SERVICE
+          done
