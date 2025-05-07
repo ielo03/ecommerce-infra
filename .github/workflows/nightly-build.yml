@@ -183,8 +183,6 @@ jobs:
           git push
 
   build-api-gateway:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.api-gateway-changed == 'true'
     runs-on: ubuntu-latest
 
     steps:
