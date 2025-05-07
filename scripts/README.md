@@ -64,6 +64,42 @@ Examples:
 ./update-version.sh order-service uat prod 1.0.1
 ```
 
+### switch-traffic.sh
+
+This script switches traffic between blue and green deployments for a specific service in a specific environment.
+
+```bash
+./switch-traffic.sh <service> <environment> <target-version>
+```
+
+Examples:
+
+```bash
+# Switch traffic to the blue deployment for product-service in QA
+./switch-traffic.sh product-service qa blue
+
+# Switch traffic to the green deployment for order-service in UAT
+./switch-traffic.sh order-service uat green
+```
+
+### update-version-status.sh
+
+This script updates the version status in the version.json file. It's typically called by the switch-traffic.sh script.
+
+```bash
+./update-version-status.sh <service> <environment> <active-version>
+```
+
+Examples:
+
+```bash
+# Update the active version to blue for product-service in QA
+./update-version-status.sh product-service qa blue
+
+# Update the active version to green for order-service in UAT
+./update-version-status.sh order-service uat green
+```
+
 ## Deployment Process
 
 The deployment process for each environment follows these steps:
@@ -71,9 +107,10 @@ The deployment process for each environment follows these steps:
 1. Set environment variables
 2. Create the namespace if it doesn't exist
 3. Create secrets for each service
-4. Update kustomization files with correct image names
-5. Apply the Kubernetes manifests
-6. Wait for deployments to be ready
+4. Create ConfigMaps for each service
+5. Create Kubernetes manifests for deployments and services
+6. Apply the Kubernetes manifests
+7. Wait for deployments to be ready
 
 ## GitOps-Style Deployments
 
@@ -89,7 +126,7 @@ The platform uses blue/green deployment to achieve zero-downtime updates:
 
 1. Two identical environments (blue and green) are maintained
 2. New versions are deployed to the inactive environment
-3. Traffic is switched only after health checks pass
+3. Traffic is switched only after health checks pass using the `switch-traffic.sh` script
 4. Rollbacks are quick by switching traffic back to the previous environment
 
 ## Customizing Deployments
