@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prod
+
+resources:
+  - ../../../base/product-service
+
+commonLabels:
+  environment: prod
+
+images:
+  - name: ${ECR_REPOSITORY}/product-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/prod-product-service
+    newTag: ${VERSION}
+
+configMapGenerator:
+  - name: product-service-config
+    literals:
+      - db_host=${DB_HOST}
+      - db_port=3306
+      - db_name=ecommerce_products
+      - log_level=info
+      - enable_inventory_check=true
+      - enable_recommendations=true
+      - enable_caching=true
+
+secretGenerator:
+  - name: product-service-secrets
+    literals:
+      - db_username=${DB_USERNAME}
+      - db_password=${DB_PASSWORD}
+      - jwt_secret=${JWT_SECRET}
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+  - service-patch.yaml

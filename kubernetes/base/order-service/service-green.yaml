@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service-green
+spec:
+  selector:
+    app: order-service
+    version: green
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP

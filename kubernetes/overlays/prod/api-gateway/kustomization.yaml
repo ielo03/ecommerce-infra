@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prod
+
+resources:
+  - ../../../base/api-gateway
+
+commonLabels:
+  environment: prod
+
+images:
+  - name: ${ECR_REPOSITORY}/api-gateway
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/prod-api-gateway
+    newTag: ${VERSION}
+
+configMapGenerator:
+  - name: api-gateway-config
+    literals:
+      - product_service_url=http://product-service.prod.svc.cluster.local
+      - order_service_url=http://order-service.prod.svc.cluster.local
+      - user_service_url=http://user-service.prod.svc.cluster.local
+      - log_level=info
+
+secretGenerator:
+  - name: api-gateway-secrets
+    literals:
+      - jwt_secret=${JWT_SECRET}
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+  - service-patch.yaml

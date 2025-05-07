@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+data:
+  product_service_url: "http://product-service.${ENVIRONMENT}.svc.cluster.local"
+  order_service_url: "http://order-service.${ENVIRONMENT}.svc.cluster.local"
+  user_service_url: "http://user-service.${ENVIRONMENT}.svc.cluster.local"

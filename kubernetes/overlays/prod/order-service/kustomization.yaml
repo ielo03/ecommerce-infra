@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prod
+
+resources:
+  - ../../../base/order-service
+
+commonLabels:
+  environment: prod
+
+images:
+  - name: ${ECR_REPOSITORY}/order-service
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/prod-order-service
+    newTag: ${VERSION}
+
+configMapGenerator:
+  - name: order-service-config
+    literals:
+      - db_host=${DB_HOST}
+      - db_port=3306
+      - db_name=ecommerce_orders
+      - product_service_url=http://product-service.prod.svc.cluster.local
+      - user_service_url=http://user-service.prod.svc.cluster.local
+      - log_level=info
+
+secretGenerator:
+  - name: order-service-secrets
+    literals:
+      - db_username=${DB_USERNAME}
+      - db_password=${DB_PASSWORD}
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+  - service-patch.yaml
