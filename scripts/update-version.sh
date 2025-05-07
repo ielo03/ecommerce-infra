@@ -3,6 +3,10 @@
 
 set -e
 
+# Get the directory of the script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
 # Function to display usage information
 function show_usage() {
     echo "Usage: $0 <service> <source-env> <target-env> [version]"
@@ -67,7 +71,7 @@ if [[ "$SOURCE_ENV" == "prod" ]]; then
 fi
 
 # Path to version.json file
-VERSION_FILE="../version.json"
+VERSION_FILE="${REPO_ROOT}/version.json"
 
 # Check if version.json exists
 if [ ! -f "$VERSION_FILE" ]; then

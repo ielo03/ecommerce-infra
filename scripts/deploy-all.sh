@@ -3,6 +3,9 @@
 
 set -e
 
+# Get the directory of the script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Function to display a menu and get user input
 function show_menu() {
     echo "===== Ecommerce Platform Deployment ====="
@@ -33,27 +36,25 @@ function confirm_deployment() {
 # Function to deploy to QA environment
 function deploy_qa() {
     echo "Deploying to QA environment..."
-    ./deploy-qa.sh
+    "${SCRIPT_DIR}/deploy-qa.sh"
     echo "QA deployment completed."
 }
 
 # Function to deploy to UAT environment
 function deploy_uat() {
     echo "Deploying to UAT environment..."
-    ./deploy-uat.sh
+    "${SCRIPT_DIR}/deploy-uat.sh"
     echo "UAT deployment completed."
 }
 
 # Function to deploy to Production environment
 function deploy_prod() {
     echo "Deploying to Production environment..."
-    ./deploy-prod.sh
+    "${SCRIPT_DIR}/deploy-prod.sh"
     echo "Production deployment completed."
 }
 
 # Main script
-cd "$(dirname "$0")"
-
 while true; do
     show_menu
     choice=$?
