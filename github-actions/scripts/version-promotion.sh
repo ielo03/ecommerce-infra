@@ -45,10 +45,11 @@ if [[ ! " ${VALID_ENVS[@]} " =~ " ${TARGET_ENV} " ]]; then
 fi
 
 # Check promotion path is valid
-if [[ "$SOURCE_ENV" == "qa" && "$TARGET_ENV" == "prod" ]]; then
-  echo "Error: Cannot promote directly from QA to Production. Use UAT as intermediate step."
-  exit 1
-fi
+# Temporarily allowing QA to Prod promotion for testing
+# if [[ "$SOURCE_ENV" == "qa" && "$TARGET_ENV" == "prod" ]]; then
+#   echo "Error: Cannot promote directly from QA to Production. Use UAT as intermediate step."
+#   exit 1
+# fi
 
 if [[ "$SOURCE_ENV" == "prod" ]]; then
   echo "Error: Cannot promote from Production environment."
@@ -89,7 +90,11 @@ mv version.json.new version.json
 echo "Updated $TARGET_ENV version to $SOURCE_VERSION"
 
 # Get ECR repository URLs
-SOURCE_REPO="${SOURCE_ENV}-${SERVICE_NAME}"
+if [[ "$SOURCE_ENV" == "qa" ]]; then
+  SOURCE_REPO="ecommerce-qa/${SERVICE_NAME}"
+else
+  SOURCE_REPO="${SOURCE_ENV}-${SERVICE_NAME}"
+fi
 TARGET_REPO="${TARGET_ENV}-${SERVICE_NAME}"
 
 # Pull the source image

@@ -12,13 +12,13 @@ metadata:
     service.kubernetes.io/active-version: "blue"
     prometheus.io/scrape: "true"
     prometheus.io/path: "/metrics"
-    prometheus.io/port: "8080"
+    prometheus.io/port: "80"
 spec:
   selector:
     app: api-gateway
     version: blue
     environment: qa
   ports:
-    - port: 8080
-      targetPort: 8080
+    - port: 80
+      targetPort: 80
   type: LoadBalancer

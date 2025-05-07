@@ -3,11 +3,18 @@ kind: Service
 metadata:
   name: product-service-blue
   namespace: ecommerce-qa
+  labels:
+    app: product-service
+    version: blue
+    environment: qa
+    app.kubernetes.io/name: product-service
+    app.kubernetes.io/part-of: ecommerce-platform
 spec:
   selector:
     app: product-service
     version: blue
+    environment: qa
   ports:
-  - port: 8080
-    targetPort: 8080
+    - port: 80
+      targetPort: 8080
   type: ClusterIP

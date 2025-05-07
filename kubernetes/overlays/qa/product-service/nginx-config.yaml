@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: product-nginx-config
+  namespace: ecommerce-qa
+data:
+  nginx.conf: |
+    user  nginx;
+    worker_processes  auto;
+
+    error_log  /var/log/nginx/error.log notice;
+    pid        /var/run/nginx.pid;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log  /var/log/nginx/access.log  main;
+
+        sendfile        on;
+        keepalive_timeout  65;
+
+        map $request_uri $product_response {
+            default                     '{"error":"Not Found","message":"The requested resource was not found"}';
+            "~^/api/products$"          '[{"id":1,"name":"Product 1","price":19.99,"description":"This is product 1"},{"id":2,"name":"Product 2","price":29.99,"description":"This is product 2"}]';
+            "~^/api/products/1$"        '{"id":1,"name":"Product 1","price":19.99,"description":"This is product 1"}';
+            "~^/api/products/2$"        '{"id":2,"name":"Product 2","price":29.99,"description":"This is product 2"}';
+        }
+
+        map $request_uri $response_code {
+            default                     404;
+            "~^/api/products$"          200;
+            "~^/api/products/1$"        200;
+            "~^/api/products/2$"        200;
+        }
+
+        server {
+            listen 80;
+            server_name localhost;
+
+            # CORS headers
+            add_header 'Access-Control-Allow-Origin' '*' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+
+            # Health check endpoints
+            location /health {
+                default_type application/json;
+                return 200 '{"status":"UP","message":"Product Service is running"}';
+            }
+            
+            location = /api/products/health {
+                default_type application/json;
+                return 200 '{"status":"UP","message":"Product Service is running"}';
+            }
+
+            # Handle OPTIONS requests for CORS
+            location /api/products {
+                if ($request_method = 'OPTIONS') {
+                    add_header 'Access-Control-Allow-Origin' '*';
+                    add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE';
+                    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+                    add_header 'Access-Control-Max-Age' 1728000;
+                    add_header 'Content-Type' 'text/plain; charset=utf-8';
+                    add_header 'Content-Length' 0;
+                    return 204;
+                }
+
+                default_type application/json;
+                return 200 $product_response;
+            }
+
+            # Default route
+            location / {
+                default_type application/json;
+                return 404 '{"error":"Not Found","message":"The requested resource was not found"}';
+            }
+
+            # Error pages
+            error_page   500 502 503 504  /50x.html;
+            location = /50x.html {
+                root   /usr/share/nginx/html;
+            }
+        }
+    }

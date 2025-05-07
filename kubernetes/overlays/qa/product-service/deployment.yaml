@@ -1,32 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api-gateway-blue
+  name: product-service
   namespace: ecommerce-qa
   labels:
-    app: api-gateway
-    version: blue
+    app: product-service
     environment: qa
-    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/name: product-service
     app.kubernetes.io/part-of: ecommerce-platform
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: api-gateway
-      version: blue
+      app: product-service
       environment: qa
   template:
     metadata:
       labels:
-        app: api-gateway
-        version: blue
+        app: product-service
         environment: qa
-        app.kubernetes.io/name: api-gateway
+        app.kubernetes.io/name: product-service
         app.kubernetes.io/part-of: ecommerce-platform
     spec:
       containers:
-        - name: api-gateway
+        - name: product-service
           image: nginx:latest
           ports:
             - containerPort: 80
@@ -37,31 +34,31 @@ spec:
           env:
             - name: NODE_ENV
               value: "qa"
-            - name: PRODUCT_SERVICE_URL
+            - name: DB_HOST
               valueFrom:
                 configMapKeyRef:
-                  name: api-gateway-config
-                  key: product_service_url
-            - name: ORDER_SERVICE_URL
+                  name: product-service-config
+                  key: db_host
+            - name: DB_PORT
               valueFrom:
                 configMapKeyRef:
-                  name: api-gateway-config
-                  key: order_service_url
-            - name: USER_SERVICE_URL
+                  name: product-service-config
+                  key: db_port
+            - name: DB_NAME
               valueFrom:
                 configMapKeyRef:
-                  name: api-gateway-config
-                  key: user_service_url
-            - name: LOG_LEVEL
-              valueFrom:
-                configMapKeyRef:
-                  name: api-gateway-config
-                  key: log_level
-            - name: JWT_SECRET
+                  name: product-service-config
+                  key: db_name
+            - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: api-gateway-secrets
-                  key: jwt_secret
+                  name: product-service-secrets
+                  key: db_username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: product-service-secrets
+                  key: db_password
           resources:
             requests:
               memory: "256Mi"
@@ -72,4 +69,4 @@ spec:
       volumes:
         - name: nginx-config
           configMap:
-            name: nginx-config
+            name: product-nginx-config

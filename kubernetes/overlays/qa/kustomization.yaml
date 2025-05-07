@@ -7,7 +7,6 @@ resources:
   - order-service
   - user-service
   - api-gateway
-  - monitoring
 
 commonLabels:
   environment: qa

@@ -27,41 +27,9 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ecommerce-qa/order-service:${VERSION}
+          image: 061039790334.dkr.ecr.us-west-2.amazonaws.com/ecommerce-qa/order-service:1.0.0
           ports:
-            - containerPort: 8080
-          env:
-            - name: NODE_ENV
-              value: "qa"
-            - name: DB_HOST
-              valueFrom:
-                configMapKeyRef:
-                  name: order-service-config
-                  key: db_host
-            - name: DB_PORT
-              valueFrom:
-                configMapKeyRef:
-                  name: order-service-config
-                  key: db_port
-            - name: DB_NAME
-              valueFrom:
-                configMapKeyRef:
-                  name: order-service-config
-                  key: db_name
-            - name: DB_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: order-service-secrets
-                  key: db_username
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: order-service-secrets
-                  key: db_password
-            - name: PRODUCT_SERVICE_URL
-              value: "http://product-service:8080"
-            - name: USER_SERVICE_URL
-              value: "http://user-service:8080"
+            - containerPort: 8082
           resources:
             requests:
               memory: "256Mi"
@@ -69,19 +37,4 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "300m"
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
+      volumes: []

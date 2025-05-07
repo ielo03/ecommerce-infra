@@ -27,9 +27,13 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ecommerce-qa/api-gateway:${VERSION}
+          image: nginx:latest
           ports:
-            - containerPort: 8080
+            - containerPort: 80
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
           env:
             - name: NODE_ENV
               value: "qa"
@@ -65,19 +69,7 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "300m"
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-config

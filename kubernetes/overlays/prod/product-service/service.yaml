@@ -1,24 +1,24 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: order-service
-  namespace: ecommerce-qa
+  name: product-service
+  namespace: ecommerce-prod
   labels:
-    app: order-service
-    environment: qa
-    app.kubernetes.io/name: order-service
+    app: product-service
+    environment: prod
+    app.kubernetes.io/name: product-service
     app.kubernetes.io/part-of: ecommerce-platform
   annotations:
     service.kubernetes.io/active-version: "blue"
     prometheus.io/scrape: "true"
     prometheus.io/path: "/metrics"
-    prometheus.io/port: "80"
+    prometheus.io/port: "8080"
 spec:
   selector:
-    app: order-service
+    app: product-service
     version: blue
-    environment: qa
+    environment: prod
   ports:
-    - port: 80
-      targetPort: 8082
+  - port: 8080
+    targetPort: 8080
   type: ClusterIP

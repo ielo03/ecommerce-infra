@@ -2,37 +2,37 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: product-service-blue
-  namespace: ecommerce-qa
+  namespace: ecommerce-prod
   labels:
     app: product-service
     version: blue
-    environment: qa
+    environment: prod
     app.kubernetes.io/name: product-service
     app.kubernetes.io/part-of: ecommerce-platform
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: product-service
       version: blue
-      environment: qa
+      environment: prod
   template:
     metadata:
       labels:
         app: product-service
         version: blue
-        environment: qa
+        environment: prod
         app.kubernetes.io/name: product-service
         app.kubernetes.io/part-of: ecommerce-platform
     spec:
       containers:
         - name: product-service
-          image: 061039790334.dkr.ecr.us-west-2.amazonaws.com/ecommerce-qa/product-service:1.0.0
+          image: 061039790334.dkr.ecr.us-west-2.amazonaws.com/prod-product-service:test
           ports:
             - containerPort: 8080
           env:
             - name: NODE_ENV
-              value: "qa"
+              value: "production"
             - name: DB_HOST
               valueFrom:
                 configMapKeyRef:
@@ -58,18 +58,31 @@ spec:
                 secretKeyRef:
                   name: product-service-secrets
                   key: db_password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: product-service-secrets
+                  key: jwt_secret
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
               memory: "512Mi"
-              cpu: "300m"
-          volumeMounts:
-            - name: nginx-config
-              mountPath: /etc/nginx/nginx.conf
-              subPath: nginx.conf
-      volumes:
-        - name: nginx-config
-          configMap:
-            name: product-nginx-config
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

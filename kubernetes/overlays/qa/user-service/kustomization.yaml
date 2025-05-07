@@ -9,6 +9,7 @@ resources:
   - service.yaml
   - service-blue.yaml
   - service-green.yaml
+  - nginx-config.yaml
 
 commonLabels:
   environment: qa

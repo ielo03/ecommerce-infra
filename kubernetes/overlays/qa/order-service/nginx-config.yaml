@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-nginx-config
+  namespace: ecommerce-qa
+data:
+  nginx.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+
+        # Add CORS headers for all responses
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+        # Handle preflight requests
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain; charset=utf-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+
+        location = /health {
+            add_header Content-Type application/json;
+            return 200 '{"status":"UP","message":"Order Service is running"}';
+        }
+        
+        location = /api/orders/health {
+            add_header Content-Type application/json;
+            return 200 '{"status":"UP","message":"Order Service is running"}';
+        }
+
+        location = /api/orders {
+            add_header Content-Type application/json;
+            return 200 '[{"id":1,"userId":1,"status":"COMPLETED","total":49.98,"items":[{"productId":1,"quantity":1,"price":19.99},{"productId":2,"quantity":1,"price":29.99}]},{"id":2,"userId":1,"status":"PROCESSING","total":19.99,"items":[{"productId":1,"quantity":1,"price":19.99}]}]';
+        }
+
+        location ~ ^/api/orders/([0-9]+)$ {
+            add_header Content-Type application/json;
+            return 200 '{"id":$1,"userId":1,"status":"COMPLETED","total":49.98,"items":[{"productId":1,"quantity":1,"price":19.99},{"productId":2,"quantity":1,"price":29.99}]}';
+        }
+
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }

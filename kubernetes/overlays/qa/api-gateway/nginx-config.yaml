@@ -1,0 +1,169 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: ecommerce-qa
+data:
+  nginx.conf: |
+    user  nginx;
+    worker_processes  auto;
+
+    error_log  /var/log/nginx/error.log notice;
+    pid        /var/run/nginx.pid;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log  /var/log/nginx/access.log  main;
+
+        sendfile        on;
+        keepalive_timeout  65;
+
+        # CORS configuration
+        map $http_origin $cors_origin {
+            default "*";
+            "~^https?://.*" "$http_origin";
+            "~^file://" "$http_origin";
+            "null" "*";
+        }
+
+        server {
+            listen 80;
+            server_name localhost;
+
+            # Health check endpoint
+            location /health {
+                default_type application/json;
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+                return 200 '{"status":"UP","message":"API Gateway is running"}';
+            }
+
+            # API Gateway routes
+            location ~ ^/api/products(/.*)?$ {
+                # CORS headers
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+                add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+                # Handle preflight requests
+                if ($request_method = 'OPTIONS') {
+                    add_header 'Access-Control-Allow-Origin' '*';
+                    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+                    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+                    add_header 'Access-Control-Max-Age' 1728000;
+                    add_header 'Content-Type' 'text/plain; charset=utf-8';
+                    add_header 'Content-Length' 0;
+                    return 204;
+                }
+
+                proxy_pass http://product-service:80;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location ~ ^/api/orders(/.*)?$ {
+                # CORS headers
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+                add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+                # Handle preflight requests
+                if ($request_method = 'OPTIONS') {
+                    add_header 'Access-Control-Allow-Origin' '*';
+                    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+                    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+                    add_header 'Access-Control-Max-Age' 1728000;
+                    add_header 'Content-Type' 'text/plain; charset=utf-8';
+                    add_header 'Content-Length' 0;
+                    return 204;
+                }
+
+                proxy_pass http://order-service:80;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location ~ ^/api/users(/.*)?$ {
+                # CORS headers
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+                add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+                # Handle preflight requests
+                if ($request_method = 'OPTIONS') {
+                    add_header 'Access-Control-Allow-Origin' '*';
+                    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+                    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+                    add_header 'Access-Control-Max-Age' 1728000;
+                    add_header 'Content-Type' 'text/plain; charset=utf-8';
+                    add_header 'Content-Length' 0;
+                    return 204;
+                }
+
+                proxy_pass http://user-service:80;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location ~ ^/api/auth(/.*)?$ {
+                # CORS headers
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+                add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+                # Handle preflight requests
+                if ($request_method = 'OPTIONS') {
+                    add_header 'Access-Control-Allow-Origin' '*';
+                    add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+                    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+                    add_header 'Access-Control-Max-Age' 1728000;
+                    add_header 'Content-Type' 'text/plain; charset=utf-8';
+                    add_header 'Content-Length' 0;
+                    return 204;
+                }
+
+                proxy_pass http://user-service:80;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            # Default route
+            location / {
+                # CORS headers for static content
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                
+                root   /usr/share/nginx/html;
+                index  index.html index.htm;
+                try_files $uri $uri/ /index.html;
+            }
+
+            # Error pages
+            error_page   500 502 503 504  /50x.html;
+            location = /50x.html {
+                root   /usr/share/nginx/html;
+            }
+        }
+    }

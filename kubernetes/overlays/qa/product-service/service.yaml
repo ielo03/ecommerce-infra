@@ -3,16 +3,22 @@ kind: Service
 metadata:
   name: product-service
   namespace: ecommerce-qa
+  labels:
+    app: product-service
+    environment: qa
+    app.kubernetes.io/name: product-service
+    app.kubernetes.io/part-of: ecommerce-platform
   annotations:
     service.kubernetes.io/active-version: "blue"
     prometheus.io/scrape: "true"
     prometheus.io/path: "/metrics"
-    prometheus.io/port: "8080"
+    prometheus.io/port: "80"
 spec:
   selector:
     app: product-service
     version: blue
+    environment: qa
   ports:
-  - port: 8080
-    targetPort: 8080
+    - port: 80
+      targetPort: 8080
   type: ClusterIP

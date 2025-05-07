@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-nginx-config
+  namespace: ecommerce-qa
+data:
+  nginx.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+
+        # Add CORS headers for all responses
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+        # Handle preflight requests
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain; charset=utf-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+
+        location = /health {
+            add_header Content-Type application/json;
+            return 200 '{"status":"UP","message":"User Service is running"}';
+        }
+        
+        location = /api/users/health {
+            add_header Content-Type application/json;
+            return 200 '{"status":"UP","message":"User Service is running"}';
+        }
+
+        location = /api/users {
+            add_header Content-Type application/json;
+            return 200 '[{"id":1,"email":"john.doe@example.com","firstName":"John","lastName":"Doe"},{"id":2,"email":"jane.smith@example.com","firstName":"Jane","lastName":"Smith"}]';
+        }
+
+        location = /api/users/profile {
+            add_header Content-Type application/json;
+            return 200 '{"id":1,"email":"john.doe@example.com","firstName":"John","lastName":"Doe","address":{"street":"123 Main St","city":"Anytown","state":"CA","zipCode":"12345","country":"USA"}}';
+        }
+
+        location = /api/auth/login {
+            add_header Content-Type application/json;
+            return 200 '{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c","user":{"id":1,"email":"john.doe@example.com","firstName":"John","lastName":"Doe"}}';
+        }
+
+        location = /api/auth/register {
+            add_header Content-Type application/json;
+            return 201 '{"id":3,"email":"new.user@example.com","firstName":"New","lastName":"User"}';
+        }
+
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
