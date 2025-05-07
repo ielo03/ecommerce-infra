@@ -18,38 +18,111 @@ jobs:
         with:
           fetch-depth: 0 # Fetch all history for proper change detection
 
+      - name: Analyze repository structure
+        run: |
+          echo "Analyzing repository structure for microservices..."
+
+          # Check the main directories
+          echo "Top-level directories:"
+          ls -la
+
+          # Check the microservices directory structure
+          echo "Microservices directory structure:"
+          if [ -d "ecommerce-microservices" ]; then
+            find ecommerce-microservices -type d -maxdepth 2 | sort
+          else
+            echo "Warning: ecommerce-microservices directory not found!"
+            # Try to find where microservices might be located
+            find . -maxdepth 3 -type d -name "*service*" | sort
+          fi
+
+          # Check for Dockerfiles which indicate service locations
+          echo "Searching for Dockerfiles (potential service locations):"
+          find . -name "Dockerfile" | sort
+
+      - name: Get last successful run
+        id: last-successful-run
+        run: |
+          # Try to get the last successful run from git history
+          # First, check if there's a tag or commit message indicating a successful build
+          LAST_TAG=$(git tag -l "nightly-success-*" | sort -r | head -n 1)
+
+          if [ -n "$LAST_TAG" ]; then
+            # Use the last successful tag
+            LAST_SUCCESSFUL_COMMIT=$(git rev-list -n 1 $LAST_TAG)
+            echo "Using last successful tag: $LAST_TAG ($LAST_SUCCESSFUL_COMMIT)"
+          else
+            # Fallback: use commit from 3 days ago to ensure we catch recent changes
+            LAST_SUCCESSFUL_COMMIT=$(git rev-list -n 1 --before="3 days ago" HEAD)
+            echo "No success tag found, using commit from 3 days ago: $LAST_SUCCESSFUL_COMMIT"
+          fi
+
+          # Save for next step
+          echo "last_commit=$LAST_SUCCESSFUL_COMMIT" >> $GITHUB_OUTPUT
+
       - name: Check for changes in microservices
         id: check-changes
         run: |
-          # Get the commit hash from 24 hours ago
-          YESTERDAY_COMMIT=$(git rev-list -n 1 --before="24 hours ago" HEAD)
+          # Get the last successful run commit from previous step
+          LAST_SUCCESSFUL_RUN="${{ steps.last-successful-run.outputs.last_commit }}"
 
           # Initialize variables
           CHANGED_SERVICES=()
 
-          # Check each service directory for changes
+          echo "Checking for changes since commit: $LAST_SUCCESSFUL_RUN"
+          echo "Current commit: $GITHUB_SHA"
+
+          # Check each service directory for changes with more detailed output
           for SERVICE in product-service order-service user-service api-gateway; do
-            # Check if there are any changes in the service directory
-            if git diff --name-only $YESTERDAY_COMMIT HEAD -- ecommerce-microservices/$SERVICE | grep -q .; then
+            echo "Checking $SERVICE for changes..."
+            
+            # Use a more robust pattern to find service-related files
+            # This pattern checks for:
+            # 1. Files directly in the service directory
+            # 2. Files in subdirectories of the service
+            # 3. Files that might contain the service name in their path
+            # 4. Files that might be related to the service in shared directories
+            CHANGES=$(git diff --name-only $LAST_SUCCESSFUL_RUN HEAD | grep -E "ecommerce-microservices/$SERVICE|ecommerce-microservices/.*/$SERVICE|ecommerce-microservices/.*$SERVICE.*|ecommerce-infra/.*$SERVICE.*")
+            
+            if [ -n "$CHANGES" ]; then
               CHANGED_SERVICES+=("$SERVICE")
-              echo "$SERVICE has changes"
+              echo "✅ $SERVICE has changes:"
+              echo "$CHANGES"
             else
-              echo "$SERVICE has no changes"
+              echo "❌ $SERVICE has no changes"
             fi
+            
+            # Also check if the service directory exists and show its contents
+            if [ -d "ecommerce-microservices/$SERVICE" ]; then
+              echo "Directory structure for $SERVICE:"
+              ls -la ecommerce-microservices/$SERVICE
+            else
+              echo "Warning: Directory ecommerce-microservices/$SERVICE not found"
+              # Try to find where the service might be located
+              find ecommerce-microservices -name "$SERVICE" -type d | xargs -I{} ls -la {}
+            fi
+            
+            echo "----------------------------------------"
           done
 
-          # Convert array to JSON
-          CHANGED_JSON=$(printf '%s\n' "${CHANGED_SERVICES[@]}" | jq -R . | jq -s .)
-          echo "changed_services=$CHANGED_JSON" >> $GITHUB_OUTPUT
-
-          # Set flag if any services changed
+          # Convert array to JSON with better error handling
           if [ ${#CHANGED_SERVICES[@]} -gt 0 ]; then
+            CHANGED_JSON=$(printf '%s\n' "${CHANGED_SERVICES[@]}" | jq -R . | jq -s .)
+            echo "changed_services=$CHANGED_JSON" >> $GITHUB_OUTPUT
             echo "any_changes=true" >> $GITHUB_OUTPUT
+            echo "✅ Detected changes in services: $CHANGED_JSON"
           else
+            # Empty array for no changes
+            echo "changed_services=[]" >> $GITHUB_OUTPUT
             echo "any_changes=false" >> $GITHUB_OUTPUT
+            echo "❌ No changes detected in any microservice"
           fi
 
-          echo "Changed services: $CHANGED_JSON"
+          # List all microservices directories for debugging
+          echo "----------------------------------------"
+          echo "All microservices directories found:"
+          find ecommerce-microservices -maxdepth 2 -type d | grep -v "node_modules" | sort
+          echo "----------------------------------------"
 
   build-and-test:
     needs: detect-changes
@@ -233,3 +306,34 @@ jobs:
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  create-success-tag:
+    needs: [build-and-test]
+    if: ${{ always() && needs.detect-changes.outputs.any_changes == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Create success tag
+        run: |
+          # Only create tag if all previous jobs succeeded
+          if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
+            echo "All builds succeeded, creating success tag"
+            
+            # Create a tag with timestamp
+            TAG_NAME="nightly-success-$(date -u +"%Y%m%d%H%M%S")"
+            
+            git config --global user.name "GitHub Actions"
+            git config --global user.email "actions@github.com"
+            
+            # Create and push tag
+            git tag -a $TAG_NAME -m "Successful nightly build on $(date -u)"
+            git push origin $TAG_NAME
+            
+            echo "Created and pushed tag: $TAG_NAME"
+          else
+            echo "Build failed, not creating success tag"
+          fi
