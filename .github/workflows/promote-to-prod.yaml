@@ -21,6 +21,9 @@ on:
         required: true
         type: string
 
+  repository_dispatch:
+    types: [deploy-to-prod]
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -28,13 +31,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set service name and ticket
+        id: set-params
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "SERVICE=${{ github.event.inputs.service }}" >> $GITHUB_ENV
+            echo "APPROVAL_TICKET=${{ github.event.inputs.approval_ticket }}" >> $GITHUB_ENV
+          else
+            echo "SERVICE=${{ github.event.client_payload.service }}" >> $GITHUB_ENV
+            echo "APPROVAL_TICKET=${{ github.event.client_payload.approval_ticket }}" >> $GITHUB_ENV
+          fi
+
+          echo "Using service: $SERVICE"
+          echo "Using approval ticket: $APPROVAL_TICKET"
+
       - name: Validate approval ticket
         run: |
-          echo "Validating approval ticket ${{ github.event.inputs.approval_ticket }}..."
+          echo "Validating approval ticket $APPROVAL_TICKET..."
           # In a real implementation, you would call an API to validate the ticket
           # For this example, we'll just check if the ticket number follows a pattern
-          if [[ ! "${{ github.event.inputs.approval_ticket }}" =~ ^(CHG|INC)[0-9]{6}$ ]]; then
-            echo "Error: Invalid ticket number format. Expected format: CHG123456 or INC123456"
+          if [[ ! "$APPROVAL_TICKET" =~ ^(CHG|INC|AUTO-)[0-9]{6,14}$ ]]; then
+            echo "Error: Invalid ticket number format. Expected format: CHG123456, INC123456, or AUTO-timestamp"
             exit 1
           fi
           echo "Ticket validation passed!"
@@ -42,8 +59,6 @@ jobs:
       - name: Check if service is verified in UAT
         id: check-verified
         run: |
-          SERVICE="${{ github.event.inputs.service }}"
-
           # Check if version is verified in UAT
           VERIFIED=$(jq -r '.services."'$SERVICE'".uat_verified // false' version.json)
 
@@ -65,6 +80,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set service name and ticket
+        id: set-params
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "SERVICE=${{ github.event.inputs.service }}" >> $GITHUB_ENV
+            echo "APPROVAL_TICKET=${{ github.event.inputs.approval_ticket }}" >> $GITHUB_ENV
+          else
+            echo "SERVICE=${{ github.event.client_payload.service }}" >> $GITHUB_ENV
+            echo "APPROVAL_TICKET=${{ github.event.client_payload.approval_ticket }}" >> $GITHUB_ENV
+          fi
+
+          echo "Using service: $SERVICE"
+          echo "Using approval ticket: $APPROVAL_TICKET"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -79,18 +108,18 @@ jobs:
       - name: Get version from version.json
         id: get-version
         run: |
-          if [ -z "${{ github.event.inputs.version }}" ]; then
-            VERSION=$(jq -r '.services."${{ github.event.inputs.service }}".uat' version.json)
-            echo "Using latest UAT version: $VERSION"
-          else
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
             VERSION="${{ github.event.inputs.version }}"
             echo "Using specified version: $VERSION"
             
             # Verify version exists in UAT
-            UAT_VERSION=$(jq -r '.services."${{ github.event.inputs.service }}".uat' version.json)
+            UAT_VERSION=$(jq -r '.services."'$SERVICE'".uat' version.json)
             if [ "$VERSION" != "$UAT_VERSION" ]; then
               echo "Warning: Specified version $VERSION does not match current UAT version $UAT_VERSION"
             fi
+          else
+            VERSION=$(jq -r '.services."'$SERVICE'".uat' version.json)
+            echo "Using latest UAT version: $VERSION"
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -99,7 +128,7 @@ jobs:
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           AWS_REGION: us-west-2
-          SERVICE_NAME: ${{ github.event.inputs.service }}
+          SERVICE_NAME: ${{ env.SERVICE }}
           VERSION: ${{ steps.get-version.outputs.version }}
         run: |
           chmod +x ./.github/scripts/version-promotion.sh
@@ -118,7 +147,7 @@ jobs:
           # Run Ansible playbook to determine inactive environment
           ACTIVE_COLOR=$(ansible-playbook -i inventory.ini ansible/playbooks/blue_green_switch.yml \
             --tags="check_only" \
-            -e "env_name=prod service=${{ github.event.inputs.service }}" \
+            -e "env_name=prod service=$SERVICE" \
             -v | grep -oP "Current active deployment for .* is \K(blue|green)")
 
           if [ "$ACTIVE_COLOR" == "blue" ]; then
@@ -127,12 +156,12 @@ jobs:
             echo "target_color=blue" >> $GITHUB_OUTPUT
           fi
 
-          echo "Will deploy to ${{ github.event.inputs.service }}-${{ steps.get-target.outputs.target_color }} in Production"
+          echo "Will deploy to $SERVICE-${{ steps.get-target.outputs.target_color }} in Production"
 
       - name: Update Kubernetes manifests
         run: |
           # Update the image tag in the kustomization.yaml file
-          cd kubernetes/overlays/prod/${{ github.event.inputs.service }}
+          cd kubernetes/overlays/prod/$SERVICE
 
           # Use sed to update the newTag value
           sed -i "s/newTag: .*/newTag: ${{ steps.get-version.outputs.version }}/" kustomization.yaml
@@ -142,14 +171,14 @@ jobs:
 
       - name: Wait for deployment to be ready
         run: |
-          kubectl rollout status deployment/${{ github.event.inputs.service }}-${{ steps.get-target.outputs.target_color }} -n ecommerce-prod --timeout=300s
+          kubectl rollout status deployment/$SERVICE-${{ steps.get-target.outputs.target_color }} -n ecommerce-prod --timeout=300s
 
       - name: Run smoke tests against inactive environment
         run: |
-          echo "Running smoke tests for ${{ github.event.inputs.service }}-${{ steps.get-target.outputs.target_color }} in Production..."
+          echo "Running smoke tests for $SERVICE-${{ steps.get-target.outputs.target_color }} in Production..."
 
           # Get the service endpoint for the inactive environment
-          SERVICE_NAME="${{ github.event.inputs.service }}-${{ steps.get-target.outputs.target_color }}"
+          SERVICE_NAME="${SERVICE}-${{ steps.get-target.outputs.target_color }}"
           ENDPOINT=$(kubectl get svc $SERVICE_NAME -n ecommerce-prod -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           if [ -z "$ENDPOINT" ]; then
             ENDPOINT=$(kubectl get svc $SERVICE_NAME -n ecommerce-prod -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
@@ -162,40 +191,40 @@ jobs:
 
           # Run smoke tests
           chmod +x ./scripts/qa/smoke-test.sh
-          ./scripts/qa/smoke-test.sh "http://$ENDPOINT" ${{ github.event.inputs.service }}
+          ./scripts/qa/smoke-test.sh "http://$ENDPOINT" $SERVICE
 
       - name: Switch traffic to new environment
         run: |
           cd kubernetes/blue-green/scripts
           chmod +x switch-traffic.sh
-          ./switch-traffic.sh ${{ github.event.inputs.service }} ${{ steps.get-target.outputs.target_color }} ecommerce-prod
+          ./switch-traffic.sh $SERVICE ${{ steps.get-target.outputs.target_color }} ecommerce-prod
 
       - name: Commit and push version file update
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add version.json
-          git add kubernetes/overlays/prod/${{ github.event.inputs.service }}/kustomization.yaml
-          git commit -m "Promote ${{ github.event.inputs.service }} from UAT to Production (version ${{ steps.get-version.outputs.version }}, ticket ${{ github.event.inputs.approval_ticket }})"
+          git add kubernetes/overlays/prod/$SERVICE/kustomization.yaml
+          git commit -m "Promote $SERVICE from UAT to Production (version ${{ steps.get-version.outputs.version }}, ticket $APPROVAL_TICKET)"
           git push
 
       - name: Update version status on success
         if: success()
         run: |
           # Mark as verified in Production
-          jq '.services."${{ github.event.inputs.service }}".prod_verified = true' version.json > version.json.new
+          jq '.services."'$SERVICE'".prod_verified = true' version.json > version.json.new
           mv version.json.new version.json
 
           # Commit and push version file update
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add version.json
-          git commit -m "Mark ${{ github.event.inputs.service }} version ${{ steps.get-version.outputs.version }} as verified in Production"
+          git commit -m "Mark $SERVICE version ${{ steps.get-version.outputs.version }} as verified in Production"
           git push
 
       - name: Update change ticket
         run: |
-          echo "Updating change ticket ${{ github.event.inputs.approval_ticket }} with deployment information..."
+          echo "Updating change ticket $APPROVAL_TICKET with deployment information..."
           # In a real implementation, you would call an API to update the ticket
           echo "Ticket updated!"
 
@@ -204,7 +233,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "✅ Successfully promoted ${{ github.event.inputs.service }} version ${{ steps.get-version.outputs.version }} to Production environment (ticket: ${{ github.event.inputs.approval_ticket }})"
+              "text": "✅ Successfully promoted ${{ env.SERVICE }} version ${{ steps.get-version.outputs.version }} to Production environment (ticket: ${{ env.APPROVAL_TICKET }})"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -215,7 +244,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "❌ Failed to promote ${{ github.event.inputs.service }} to Production environment (ticket: ${{ github.event.inputs.approval_ticket }})"
+              "text": "❌ Failed to promote ${{ env.SERVICE }} to Production environment (ticket: ${{ env.APPROVAL_TICKET }})"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,158 @@
+name: Version File Watcher
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "version.json"
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      qa_changes: ${{ steps.check-changes.outputs.qa_changes }}
+      uat_changes: ${{ steps.check-changes.outputs.uat_changes }}
+      prod_changes: ${{ steps.check-changes.outputs.prod_changes }}
+      qa_services: ${{ steps.check-changes.outputs.qa_services }}
+      uat_services: ${{ steps.check-changes.outputs.uat_services }}
+      prod_services: ${{ steps.check-changes.outputs.prod_services }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2 # Fetch the current and previous commit
+
+      - name: Get previous version file
+        run: |
+          git show HEAD~1:version.json > previous_version.json
+          if [ ! -f previous_version.json ]; then
+            echo "{}" > previous_version.json
+          fi
+
+      - name: Check for changes in version.json
+        id: check-changes
+        run: |
+          # Initialize arrays for changed services
+          QA_SERVICES=()
+          UAT_SERVICES=()
+          PROD_SERVICES=()
+
+          # Get all services
+          SERVICES=$(jq -r '.services | keys[]' version.json)
+
+          # Check each service for changes
+          for SERVICE in $SERVICES; do
+            # Check QA version changes
+            PREV_QA=$(jq -r ".services.\"$SERVICE\".qa // \"\"" previous_version.json)
+            CURR_QA=$(jq -r ".services.\"$SERVICE\".qa // \"\"" version.json)
+            if [ "$PREV_QA" != "$CURR_QA" ]; then
+              QA_SERVICES+=("$SERVICE")
+              echo "QA version changed for $SERVICE: $PREV_QA -> $CURR_QA"
+            fi
+            
+            # Check UAT version changes
+            PREV_UAT=$(jq -r ".services.\"$SERVICE\".uat // \"\"" previous_version.json)
+            CURR_UAT=$(jq -r ".services.\"$SERVICE\".uat // \"\"" version.json)
+            if [ "$PREV_UAT" != "$CURR_UAT" ]; then
+              UAT_SERVICES+=("$SERVICE")
+              echo "UAT version changed for $SERVICE: $PREV_UAT -> $CURR_UAT"
+            fi
+            
+            # Check PROD version changes
+            PREV_PROD=$(jq -r ".services.\"$SERVICE\".prod // \"\"" previous_version.json)
+            CURR_PROD=$(jq -r ".services.\"$SERVICE\".prod // \"\"" version.json)
+            if [ "$PREV_PROD" != "$CURR_PROD" ]; then
+              PROD_SERVICES+=("$SERVICE")
+              echo "PROD version changed for $SERVICE: $PREV_PROD -> $CURR_PROD"
+            fi
+          done
+
+          # Convert arrays to JSON
+          QA_JSON=$(printf '%s\n' "${QA_SERVICES[@]}" | jq -R . | jq -s .)
+          UAT_JSON=$(printf '%s\n' "${UAT_SERVICES[@]}" | jq -R . | jq -s .)
+          PROD_JSON=$(printf '%s\n' "${PROD_SERVICES[@]}" | jq -R . | jq -s .)
+
+          # Set outputs
+          echo "qa_changes=$([[ ${#QA_SERVICES[@]} -gt 0 ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "uat_changes=$([[ ${#UAT_SERVICES[@]} -gt 0 ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "prod_changes=$([[ ${#PROD_SERVICES[@]} -gt 0 ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "qa_services=$QA_JSON" >> $GITHUB_OUTPUT
+          echo "uat_services=$UAT_JSON" >> $GITHUB_OUTPUT
+          echo "prod_services=$PROD_JSON" >> $GITHUB_OUTPUT
+
+          echo "QA services changed: $QA_JSON"
+          echo "UAT services changed: $UAT_JSON"
+          echo "PROD services changed: $PROD_JSON"
+
+  deploy-to-qa:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.qa_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.qa_services) }}
+      fail-fast: false
+
+    steps:
+      - name: Trigger QA Deployment
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: deploy-to-qa
+          client-payload: '{"service": "${{ matrix.service }}"}'
+
+      - name: Log deployment trigger
+        run: echo "Triggered QA deployment for ${{ matrix.service }}"
+
+  deploy-to-uat:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.uat_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.uat_services) }}
+      fail-fast: false
+
+    steps:
+      - name: Trigger UAT Deployment
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: deploy-to-uat
+          client-payload: '{"service": "${{ matrix.service }}"}'
+
+      - name: Log deployment trigger
+        run: echo "Triggered UAT deployment for ${{ matrix.service }}"
+
+  deploy-to-prod:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prod_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.prod_services) }}
+      fail-fast: false
+
+    steps:
+      - name: Get approval ticket from commit message
+        id: get-ticket
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          TICKET=$(echo "$COMMIT_MSG" | grep -oP 'ticket [A-Z0-9]+' | awk '{print $2}')
+          if [ -z "$TICKET" ]; then
+            TICKET="AUTO-$(date +%Y%m%d%H%M%S)"
+            echo "No ticket found in commit message, using auto-generated: $TICKET"
+          fi
+          echo "ticket=$TICKET" >> $GITHUB_OUTPUT
+
+      - name: Trigger Production Deployment
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: deploy-to-prod
+          client-payload: '{"service": "${{ matrix.service }}", "approval_ticket": "${{ steps.get-ticket.outputs.ticket }}"}'
+
+      - name: Log deployment trigger
+        run: echo "Triggered Production deployment for ${{ matrix.service }} with ticket ${{ steps.get-ticket.outputs.ticket }}"

@@ -33,6 +33,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set service name
+        id: set-service
+        run: |
+          echo "SERVICE=${{ matrix.service }}" >> $GITHUB_ENV
+          echo "Using service: ${{ matrix.service }}"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -57,8 +63,9 @@ jobs:
       - name: Get version from version.json
         id: get-version
         run: |
-          VERSION=$(jq -r '.services."${{ matrix.service }}".qa' version.json)
+          VERSION=$(jq -r '.services."'$SERVICE'".qa' version.json)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION for service: $SERVICE"
 
       - name: Determine inactive environment using Ansible
         id: get-target
@@ -70,7 +77,7 @@ jobs:
           # Run Ansible playbook to determine inactive environment
           ACTIVE_COLOR=$(ansible-playbook -i inventory.ini ansible/playbooks/blue_green_switch.yml \
             --tags="check_only" \
-            -e "env_name=qa service=${{ matrix.service }}" \
+            -e "env_name=qa service=$SERVICE" \
             -v | grep -oP "Current active deployment for .* is \K(blue|green)")
 
           if [ "$ACTIVE_COLOR" == "blue" ]; then
@@ -78,6 +85,8 @@ jobs:
           else
             echo "target_color=blue" >> $GITHUB_OUTPUT
           fi
+
+          echo "Will deploy to $SERVICE-${{ steps.get-target.outputs.target_color }} in QA"
 
       - name: Deploy to inactive environment using Ansible
         run: |
@@ -88,31 +97,31 @@ jobs:
           # Set environment variables for Ansible
           export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
-          export ECR_REPOSITORY=ecommerce-qa/${{ matrix.service }}
+          export ECR_REPOSITORY=ecommerce-qa/$SERVICE
           export IMAGE_TAG=${{ github.sha }}
 
           # Run Ansible playbook to deploy
           ansible-playbook -i inventory.ini ansible/playbooks/apply_kubernetes_manifests.yml \
-            -e "env_name=qa service=${{ matrix.service }} target_color=${{ steps.get-target.outputs.target_color }} \
+            -e "env_name=qa service=$SERVICE target_color=${{ steps.get-target.outputs.target_color }} \
                 image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Run health checks using Ansible
         run: |
           ansible-playbook -i inventory.ini ansible/playbooks/blue_green_switch.yml \
             --tags="health_check" \
-            -e "env_name=qa service=${{ matrix.service }} color=${{ steps.get-target.outputs.target_color }}"
+            -e "env_name=qa service=$SERVICE color=${{ steps.get-target.outputs.target_color }}"
 
       - name: Switch traffic using Ansible
         run: |
           ansible-playbook -i inventory.ini ansible/playbooks/blue_green_switch.yml \
-            -e "env_name=qa service=${{ matrix.service }} color=${{ steps.get-target.outputs.target_color }}"
+            -e "env_name=qa service=$SERVICE color=${{ steps.get-target.outputs.target_color }}"
 
       - name: Trigger smoke tests
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: run-smoke-tests
-          client-payload: '{"service": "${{ matrix.service }}", "environment": "qa"}'
+          client-payload: '{"service": "${{ env.SERVICE }}", "environment": "qa"}'
 
       - name: Notify on success
         if: success()
@@ -120,7 +129,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "✅ Successfully deployed ${{ matrix.service }} version ${{ steps.get-version.outputs.version }} to QA environment using Ansible automation"
+              "text": "✅ Successfully deployed ${{ env.SERVICE }} version ${{ steps.get-version.outputs.version }} to QA environment using Ansible automation"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -131,7 +140,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "❌ Failed to deploy ${{ matrix.service }} to QA environment"
+              "text": "❌ Failed to deploy ${{ env.SERVICE }} to QA environment"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
