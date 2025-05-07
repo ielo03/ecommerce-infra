@@ -45,6 +45,7 @@ jobs:
             echo "user-service-changed=false" >> $GITHUB_OUTPUT
           fi
 
+          echo "api-gateway-changed=true" >> $GITHUB_OUTPUT
           if git log --since="$YESTERDAY" --name-only --pretty=format: | grep -q "ecommerce-microservices/api-gateway/"; then
             echo "api-gateway-changed=true" >> $GITHUB_OUTPUT
           else
