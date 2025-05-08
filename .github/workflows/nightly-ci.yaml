@@ -13,18 +13,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: ecommerce-microservices/${{ matrix.service }}/package-lock.json
-
-      - name: Install dependencies
-        run: |
-          cd ecommerce-microservices/${{ matrix.service }}
-          npm ci
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
