@@ -166,23 +166,3 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: deploy-to-qa
           client-payload: '{"service": "${{ matrix.service }}", "version": "${{ steps.update-version.outputs.new_version }}", "commit": "${{ github.sha }}"}'
-
-  notify-no-changes:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.any_changes == 'false'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Notify no changes detected
-        run: |
-          echo "No changes detected in any microservice in the last 24 hours."
-
-      - name: Slack notification
-        uses: slackapi/slack-github-action@v1
-        with:
-          payload: |
-            {
-              "text": "ℹ️ Nightly CI/CD Pipeline: No changes detected in any microservice in the last 24 hours."
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
