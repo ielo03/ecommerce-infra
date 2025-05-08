@@ -64,41 +64,122 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Create a modified docker-compose file with Amazon Linux 2023 compatibility
+# Create a completely new docker-compose file
 TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose-ec2.yml"
 
-# Copy the original docker-compose file
-cp "$SCRIPT_DIR/docker-compose.yml" "$TEMP_COMPOSE_FILE"
+# Create the new docker-compose file with the correct database name
+cat > "$TEMP_COMPOSE_FILE" << EOF
+version: "3.8"
 
-# Create a MySQL initialization script to create the notes_app database
-MYSQL_INIT_DIR="$SCRIPT_DIR/mysql-init"
-mkdir -p "$MYSQL_INIT_DIR"
+services:
+  api-gateway:
+    image: ${ECR_REGISTRY}/api-gateway:\${API_GATEWAY_VERSION:-1.0.0}
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - FRONTEND_HOST=frontend
+      - BACKEND_HOST=backend
+    networks:
+      - app-network
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "--spider",
+          "http://localhost:8080/api-gateway/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
-cat > "$MYSQL_INIT_DIR/init.sql" << EOF
-CREATE DATABASE IF NOT EXISTS notes_app;
-USE notes_app;
-CREATE TABLE IF NOT EXISTS notes (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  content TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+  frontend:
+    image: ${ECR_REGISTRY}/frontend:\${FRONTEND_VERSION:-1.0.0}
+    ports:
+      - "8081:8081"
+    environment:
+      - NODE_ENV=production
+      - PORT=8081
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  backend:
+    image: ${ECR_REGISTRY}/backend:\${BACKEND_VERSION:-1.0.0}
+    ports:
+      - "8082:8082"
+    environment:
+      - NODE_ENV=production
+      - PORT=8082
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PASSWORD=password
+      - DB_NAME=notes_app
+      - DB_CONNECTION_RETRIES=10
+      - DB_CONNECTION_RETRY_DELAY=5000
+    depends_on:
+      - mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=notes_app
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-ppassword",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
 EOF
 
-# Update the docker-compose file to:
-# 1. Mount the initialization script
-# 2. Update environment variables for the backend
-sed -i '/mysql:/,/healthcheck:/ s/volumes:/volumes:\n      - .\/mysql-init:\/docker-entrypoint-initdb.d/' "$TEMP_COMPOSE_FILE"
-sed -i 's/DB_NAME=ecommerce_db/DB_NAME=notes_app/' "$TEMP_COMPOSE_FILE"
+echo "Created new docker-compose file at $TEMP_COMPOSE_FILE"
 
-# Add retry settings for the backend service
-sed -i '/DB_NAME=notes_app/a\      - DB_CONNECTION_RETRIES=5\n      - DB_CONNECTION_RETRY_DELAY=5000' "$TEMP_COMPOSE_FILE"
-
-echo "Modified docker-compose file created at $TEMP_COMPOSE_FILE"
-echo "MySQL initialization script created at $MYSQL_INIT_DIR/init.sql"
-
-# Run docker-compose with the modified file
+# Run docker-compose with the new file
 echo "Starting the QA environment..."
+docker-compose -f "$TEMP_COMPOSE_FILE" down -v
 docker-compose -f "$TEMP_COMPOSE_FILE" up "$@"
-
-# Clean up the temporary file when done
-# trap 'rm -f "$TEMP_COMPOSE_FILE"' EXIT
