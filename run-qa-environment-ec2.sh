@@ -70,12 +70,31 @@ TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose-ec2.yml"
 # Copy the original docker-compose file
 cp "$SCRIPT_DIR/docker-compose.yml" "$TEMP_COMPOSE_FILE"
 
-# Update the MySQL database name to match what the backend expects
-sed -i 's/MYSQL_DATABASE=ecommerce_db/MYSQL_DATABASE=notes_app/g' "$TEMP_COMPOSE_FILE"
-sed -i 's/DB_NAME=ecommerce_db/DB_NAME=notes_app/g' "$TEMP_COMPOSE_FILE"
+# Create a MySQL initialization script to create the notes_app database
+MYSQL_INIT_DIR="$SCRIPT_DIR/mysql-init"
+mkdir -p "$MYSQL_INIT_DIR"
+
+cat > "$MYSQL_INIT_DIR/init.sql" << EOF
+CREATE DATABASE IF NOT EXISTS notes_app;
+USE notes_app;
+CREATE TABLE IF NOT EXISTS notes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+EOF
+
+# Update the docker-compose file to:
+# 1. Mount the initialization script
+# 2. Update environment variables for the backend
+sed -i '/mysql:/,/healthcheck:/ s/volumes:/volumes:\n      - .\/mysql-init:\/docker-entrypoint-initdb.d/' "$TEMP_COMPOSE_FILE"
+sed -i 's/DB_NAME=ecommerce_db/DB_NAME=notes_app/' "$TEMP_COMPOSE_FILE"
 
 # Add retry settings for the backend service
 sed -i '/DB_NAME=notes_app/a\      - DB_CONNECTION_RETRIES=5\n      - DB_CONNECTION_RETRY_DELAY=5000' "$TEMP_COMPOSE_FILE"
+
+echo "Modified docker-compose file created at $TEMP_COMPOSE_FILE"
+echo "MySQL initialization script created at $MYSQL_INIT_DIR/init.sql"
 
 # Run docker-compose with the modified file
 echo "Starting the QA environment..."
