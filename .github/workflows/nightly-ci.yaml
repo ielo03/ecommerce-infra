@@ -25,80 +25,7 @@ jobs:
           cd ecommerce-microservices/${{ matrix.service }}
           npm ci
 
-      - name: Run linting
-        id: lint
-        continue-on-error: true
-        run: |
-          cd ecommerce-microservices/${{ matrix.service }}
-          npm run lint
-
-      - name: Run tests
-        id: test
-        continue-on-error: true
-        run: |
-          cd ecommerce-microservices/${{ matrix.service }}
-          npm test
-
-      - name: Send email notification on test failure
-        if: steps.test.outcome == 'failure'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const axios = require('axios');
-
-            const sendgridApiKey = '${{ secrets.SENDGRID_API_KEY }}';
-            const notificationEmail = '${{ secrets.NOTIFICATION_EMAIL }}';
-
-            const data = {
-              personalizations: [
-                {
-                  to: [{ email: notificationEmail }],
-                  subject: `[ALERT] Tests failed for ${{ matrix.service }}`
-                }
-              ],
-              from: { email: 'ci-notifications@example.com' },
-              content: [
-                {
-                  type: 'text/html',
-                  value: `
-                    <h2>CI Test Failure Alert</h2>
-                    <p>Tests have failed for <strong>${{ matrix.service }}</strong> in the nightly build.</p>
-                    <p>Commit: ${process.env.GITHUB_SHA}</p>
-                    <p>Branch: ${process.env.GITHUB_REF}</p>
-                    <p>Workflow run: <a href="https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}">View details</a></p>
-                    <p>Please investigate and fix the failing tests as soon as possible.</p>
-                  `
-                }
-              ]
-            };
-
-            try {
-              await axios({
-                method: 'post',
-                url: 'https://api.sendgrid.com/v3/mail/send',
-                headers: {
-                  'Authorization': `Bearer ${sendgridApiKey}`,
-                  'Content-Type': 'application/json'
-                },
-                data: data
-              });
-              
-              console.log('Test failure notification email sent successfully');
-            } catch (error) {
-              console.error('Failed to send notification email:', error.message);
-            }
-
-      # Only proceed to build and push if tests passed
-      - name: Check test results
-        if: always()
-        run: |
-          if [ "${{ steps.test.outcome }}" != "success" ]; then
-            echo "Tests failed for ${{ matrix.service }}. Skipping build and push."
-            exit 1
-          fi
-
       - name: Configure AWS credentials
-        if: steps.test.outcome == 'success'
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -106,12 +33,10 @@ jobs:
           aws-region: us-west-2
 
       - name: Login to Amazon ECR
-        if: steps.test.outcome == 'success'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and push Docker image
-        if: steps.test.outcome == 'success'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ecommerce-qa/${{ matrix.service }}
@@ -126,7 +51,6 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Update version file
-        if: steps.test.outcome == 'success'
         run: |
           # Get current version
           VERSION=$(jq -r '.services."${{ matrix.service }}".qa' version.json)
@@ -154,7 +78,6 @@ jobs:
           git push
 
       - name: Trigger QA Deployment
-        if: steps.test.outcome == 'success'
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
