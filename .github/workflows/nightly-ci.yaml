@@ -9,12 +9,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        service: ${{ fromJson(needs.detect-changes.outputs.changed_services) }}
-      # Important: This ensures all services are tested even if one fails
-      fail-fast: false
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
