@@ -18,7 +18,7 @@ jobs:
         with:
           repository: colbydobson/ecommerce-microservices
           path: ecommerce-microservices
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.MICROSERVICES_ACCESS_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
