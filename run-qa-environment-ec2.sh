@@ -182,4 +182,4 @@ echo "Created new docker-compose file at $TEMP_COMPOSE_FILE"
 # Run docker-compose with the new file
 echo "Starting the QA environment..."
 docker-compose -f "$TEMP_COMPOSE_FILE" down -v
-docker-compose -f "$TEMP_COMPOSE_FILE" up "$@"
+docker-compose -f "$TEMP_COMPOSE_FILE" up "$@" -d

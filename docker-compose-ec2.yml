@@ -1,0 +1,106 @@
+version: "3.8"
+
+services:
+  api-gateway:
+    image: 061039790334.dkr.ecr.us-west-2.amazonaws.com/api-gateway:${API_GATEWAY_VERSION:-1.0.0}
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - FRONTEND_HOST=frontend
+      - BACKEND_HOST=backend
+    networks:
+      - app-network
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "--spider",
+          "http://localhost:8080/api-gateway/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: 061039790334.dkr.ecr.us-west-2.amazonaws.com/frontend:${FRONTEND_VERSION:-1.0.0}
+    ports:
+      - "8081:8081"
+    environment:
+      - NODE_ENV=production
+      - PORT=8081
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  backend:
+    image: 061039790334.dkr.ecr.us-west-2.amazonaws.com/backend:${BACKEND_VERSION:-1.0.0}
+    ports:
+      - "8082:8082"
+    environment:
+      - NODE_ENV=production
+      - PORT=8082
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PASSWORD=password
+      - DB_NAME=notes_app
+      - DB_CONNECTION_RETRIES=10
+      - DB_CONNECTION_RETRY_DELAY=5000
+    depends_on:
+      - mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=notes_app
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-ppassword",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
