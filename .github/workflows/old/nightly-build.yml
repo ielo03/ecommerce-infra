@@ -1,0 +1,225 @@
+name: Nightly Build
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # Run at midnight UTC every day
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      product-service-changed: ${{ steps.check-changes.outputs.product-service-changed }}
+      order-service-changed: ${{ steps.check-changes.outputs.order-service-changed }}
+      user-service-changed: ${{ steps.check-changes.outputs.user-service-changed }}
+      api-gateway-changed: ${{ steps.check-changes.outputs.api-gateway-changed }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          # Get the timestamp for 24 hours ago
+          YESTERDAY=$(date -d "24 hours ago" +%s)
+
+          # Check each microservice for changes
+          if git log --since="$YESTERDAY" --name-only --pretty=format: | grep -q "ecommerce-microservices/product-service/"; then
+            echo "product-service-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "product-service-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          if git log --since="$YESTERDAY" --name-only --pretty=format: | grep -q "ecommerce-microservices/order-service/"; then
+            echo "order-service-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "order-service-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          if git log --since="$YESTERDAY" --name-only --pretty=format: | grep -q "ecommerce-microservices/user-service/"; then
+            echo "user-service-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "user-service-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "api-gateway-changed=true" >> $GITHUB_OUTPUT
+          if git log --since="$YESTERDAY" --name-only --pretty=format: | grep -q "ecommerce-microservices/api-gateway/"; then
+            echo "api-gateway-changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "api-gateway-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-product-service:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push product-service image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ecommerce-qa/product-service
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd ecommerce-microservices/product-service
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          # Update version.json
+          cd ../../
+          VERSION=$(jq -r '.services."product-service".qa' version.json)
+          NEW_VERSION=$(echo $VERSION | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+          jq --arg version "$NEW_VERSION" '.services."product-service".qa = $version | .last_updated = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"' version.json > version.json.new
+          mv version.json.new version.json
+
+          # Commit and push version.json
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add version.json
+          git commit -m "Update product-service version to $NEW_VERSION [skip ci]"
+          git push
+
+  build-order-service:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.order-service-changed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push order-service image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ecommerce-qa/order-service
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd ecommerce-microservices/order-service
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          # Update version.json
+          cd ../../
+          VERSION=$(jq -r '.services."order-service".qa' version.json)
+          NEW_VERSION=$(echo $VERSION | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+          jq --arg version "$NEW_VERSION" '.services."order-service".qa = $version | .last_updated = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"' version.json > version.json.new
+          mv version.json.new version.json
+
+          # Commit and push version.json
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add version.json
+          git commit -m "Update order-service version to $NEW_VERSION [skip ci]"
+          git push
+
+  build-user-service:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.user-service-changed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push user-service image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ecommerce-qa/user-service
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd ecommerce-microservices/user-service
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          # Update version.json
+          cd ../../
+          VERSION=$(jq -r '.services."user-service".qa' version.json)
+          NEW_VERSION=$(echo $VERSION | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+          jq --arg version "$NEW_VERSION" '.services."user-service".qa = $version | .last_updated = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"' version.json > version.json.new
+          mv version.json.new version.json
+
+          # Commit and push version.json
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add version.json
+          git commit -m "Update user-service version to $NEW_VERSION [skip ci]"
+          git push
+
+  build-api-gateway:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push api-gateway image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ecommerce-qa/api-gateway
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd ecommerce-microservices/api-gateway
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          # Update version.json
+          cd ../../
+          VERSION=$(jq -r '.services."api-gateway".qa' version.json)
+          NEW_VERSION=$(echo $VERSION | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+          jq --arg version "$NEW_VERSION" '.services."api-gateway".qa = $version | .last_updated = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"' version.json > version.json.new
+          mv version.json.new version.json
+
+          # Commit and push version.json
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add version.json
+          git commit -m "Update api-gateway version to $NEW_VERSION [skip ci]"
+          git push

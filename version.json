@@ -15,5 +15,10 @@
       "uat": "1.0.1",
       "prod": "1.0.1"
     }
+  },
+  "latest": {
+    "api-gateway": "1.0.1",
+    "frontend": "1.0.1",
+    "backend": "1.0.1"
   }
 }
