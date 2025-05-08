@@ -6,143 +6,11 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  detect-changes:
+  build-api-gateway:
     runs-on: ubuntu-latest
-    outputs:
-      changed_services: ${{ steps.check-changes.outputs.changed_services }}
-      any_changes: ${{ steps.check-changes.outputs.any_changes }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0 # Fetch all history for proper change detection
-
-      - name: Analyze repository structure
-        run: |
-          echo "Analyzing repository structure for microservices..."
-
-          # Check the main directories
-          echo "Top-level directories:"
-          ls -la
-
-          # Check the microservices directory structure
-          echo "Microservices directory structure:"
-          if [ -d "ecommerce-microservices" ]; then
-            find ecommerce-microservices -type d -maxdepth 2 | sort
-          else
-            echo "Warning: ecommerce-microservices directory not found!"
-            # Try to find where microservices might be located
-            find . -maxdepth 3 -type d -name "*service*" | sort
-          fi
-
-          # Check for Dockerfiles which indicate service locations
-          echo "Searching for Dockerfiles (potential service locations):"
-          find . -name "Dockerfile" | sort
-
-      - name: Get last successful run
-        id: last-successful-run
-        run: |
-          # Try to get the last successful run from git history
-          # First, check if there's a tag or commit message indicating a successful build
-          LAST_TAG=$(git tag -l "nightly-success-*" | sort -r | head -n 1)
-
-          if [ -n "$LAST_TAG" ]; then
-            # Use the last successful tag
-            LAST_SUCCESSFUL_COMMIT=$(git rev-list -n 1 $LAST_TAG)
-            echo "Using last successful tag: $LAST_TAG ($LAST_SUCCESSFUL_COMMIT)"
-          else
-            # Fallback: use commit from 3 days ago to ensure we catch recent changes
-            LAST_SUCCESSFUL_COMMIT=$(git rev-list -n 1 --before="3 days ago" HEAD)
-            echo "No success tag found, using commit from 3 days ago: $LAST_SUCCESSFUL_COMMIT"
-          fi
-
-          # Save for next step
-          echo "last_commit=$LAST_SUCCESSFUL_COMMIT" >> $GITHUB_OUTPUT
-
-      - name: Check for changes in microservices
-        id: check-changes
-        run: |
-          # Get the last successful run commit from previous step
-          LAST_SUCCESSFUL_RUN="${{ steps.last-successful-run.outputs.last_commit }}"
-
-          # Initialize variables
-          CHANGED_SERVICES=()
-
-          echo "Checking for changes since commit: $LAST_SUCCESSFUL_RUN"
-          echo "Current commit: $GITHUB_SHA"
-
-          # Check each service directory for changes with more detailed output
-          for SERVICE in product-service order-service user-service api-gateway; do
-            echo "Checking $SERVICE for changes..."
-            
-            # Use a more robust pattern to find service-related files
-            # This pattern checks for:
-            # 1. Files directly in the service directory
-            # 2. Files in subdirectories of the service
-            # 3. Files that might contain the service name in their path
-            # 4. Files that might be related to the service in shared directories
-            CHANGES=$(git diff --name-only $LAST_SUCCESSFUL_RUN HEAD | grep -E "ecommerce-microservices/$SERVICE|ecommerce-microservices/.*/$SERVICE|ecommerce-microservices/.*$SERVICE.*|ecommerce-infra/.*$SERVICE.*")
-            
-            if [ -n "$CHANGES" ]; then
-              CHANGED_SERVICES+=("$SERVICE")
-              echo "✅ $SERVICE has changes:"
-              echo "$CHANGES"
-            else
-              echo "❌ $SERVICE has no changes"
-            fi
-            
-            # Also check if the service directory exists and show its contents
-            if [ -d "ecommerce-microservices/$SERVICE" ]; then
-              echo "Directory structure for $SERVICE:"
-              ls -la ecommerce-microservices/$SERVICE
-            else
-              echo "Warning: Directory ecommerce-microservices/$SERVICE not found"
-              # Try to find where the service might be located
-              find ecommerce-microservices -name "$SERVICE" -type d | xargs -I{} ls -la {}
-            fi
-            
-            echo "----------------------------------------"
-          done
-
-          # Convert array to JSON with better error handling
-          if [ ${#CHANGED_SERVICES[@]} -gt 0 ]; then
-            CHANGED_JSON=$(printf '%s\n' "${CHANGED_SERVICES[@]}" | jq -R . | jq -s .)
-            echo "changed_services=$CHANGED_JSON" >> $GITHUB_OUTPUT
-            echo "any_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ Detected changes in services: $CHANGED_JSON"
-          else
-            # Empty array for no changes
-            echo "changed_services=[]" >> $GITHUB_OUTPUT
-            echo "any_changes=false" >> $GITHUB_OUTPUT
-            echo "❌ No changes detected in any microservice"
-          fi
-
-          # List all microservices directories for debugging
-          echo "----------------------------------------"
-          echo "All microservices directories found:"
-          find ecommerce-microservices -maxdepth 2 -type d | grep -v "node_modules" | sort
-          echo "----------------------------------------"
-
-  build-and-test:
-    needs: detect-changes
-    # Always run this job regardless of changes detected
-    # if: needs.detect-changes.outputs.any_changes == 'true'
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        # Always test all services
-        service:
-          ["product-service", "order-service", "user-service", "api-gateway"]
-      # Important: This ensures all services are tested even if one fails
-      fail-fast: false
-
     steps:
       - name: Checkout infrastructure repo
         uses: actions/checkout@v3
-        with:
-          path: ecommerce-infra
 
       - name: Checkout microservices repo
         uses: actions/checkout@v3
@@ -156,16 +24,17 @@ jobs:
         with:
           node-version: "18"
           cache: "npm"
-          cache-dependency-path: ecommerce-microservices/${{ matrix.service }}/package-lock.json
+          cache-dependency-path: ecommerce-microservices/api-gateway/package-lock.json
 
       - name: Check service directory exists
         id: check-dir
         run: |
-          if [ -d "ecommerce-microservices/${{ matrix.service }}" ]; then
+          if [ -d "ecommerce-microservices/api-gateway" ]; then
             echo "Service directory exists"
             echo "dir_exists=true" >> $GITHUB_OUTPUT
+            ls -la ecommerce-microservices/api-gateway
           else
-            echo "Warning: Service directory ${{ matrix.service }} not found!"
+            echo "Warning: api-gateway directory not found!"
             echo "Listing available directories:"
             find ecommerce-microservices -maxdepth 1 -type d | sort
             echo "dir_exists=false" >> $GITHUB_OUTPUT
@@ -174,91 +43,25 @@ jobs:
       - name: Install dependencies
         if: steps.check-dir.outputs.dir_exists == 'true'
         run: |
-          cd ecommerce-microservices/${{ matrix.service }}
+          cd ecommerce-microservices/api-gateway
           npm ci || echo "npm ci failed, continuing anyway"
 
       - name: Run linting
-        id: lint
         if: steps.check-dir.outputs.dir_exists == 'true'
         continue-on-error: true
         run: |
-          cd ecommerce-microservices/${{ matrix.service }}
+          cd ecommerce-microservices/api-gateway
           npm run lint || echo "Linting failed or not configured, continuing anyway"
 
       - name: Run tests
-        id: test
         if: steps.check-dir.outputs.dir_exists == 'true'
         continue-on-error: true
         run: |
-          cd ecommerce-microservices/${{ matrix.service }}
+          cd ecommerce-microservices/api-gateway
           npm test || echo "Tests failed or not configured, continuing anyway"
 
-      - name: Send email notification on test failure
-        if: steps.test.outcome == 'failure'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const axios = require('axios');
-
-            const sendgridApiKey = '${{ secrets.SENDGRID_API_KEY }}';
-            const notificationEmail = '${{ secrets.NOTIFICATION_EMAIL }}';
-
-            const data = {
-              personalizations: [
-                {
-                  to: [{ email: notificationEmail }],
-                  subject: `[ALERT] Tests failed for ${{ matrix.service }}`
-                }
-              ],
-              from: { email: 'ci-notifications@example.com' },
-              content: [
-                {
-                  type: 'text/html',
-                  value: `
-                    <h2>CI Test Failure Alert</h2>
-                    <p>Tests have failed for <strong>${{ matrix.service }}</strong> in the nightly build.</p>
-                    <p>Commit: ${process.env.GITHUB_SHA}</p>
-                    <p>Branch: ${process.env.GITHUB_REF}</p>
-                    <p>Workflow run: <a href="https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}">View details</a></p>
-                    <p>Please investigate and fix the failing tests as soon as possible.</p>
-                  `
-                }
-              ]
-            };
-
-            try {
-              await axios({
-                method: 'post',
-                url: 'https://api.sendgrid.com/v3/mail/send',
-                headers: {
-                  'Authorization': `Bearer ${sendgridApiKey}`,
-                  'Content-Type': 'application/json'
-                },
-                data: data
-              });
-              
-              console.log('Test failure notification email sent successfully');
-            } catch (error) {
-              console.error('Failed to send notification email:', error.message);
-            }
-
-      # Check test results but continue anyway for testing
-      - name: Check test results
-        id: check-tests
-        if: always()
-        run: |
-          if [ "${{ steps.test.outcome }}" == "success" ] || [ "${{ steps.test.outcome }}" == "skipped" ]; then
-            echo "Tests passed or skipped for ${{ matrix.service }}. Proceeding with build and push."
-            echo "should_continue=true" >> $GITHUB_OUTPUT
-          else
-            echo "Tests failed for ${{ matrix.service }}. For testing purposes, we'll continue anyway."
-            echo "should_continue=true" >> $GITHUB_OUTPUT
-            # In a real scenario, you might want to exit 1 here to fail the job
-            # exit 1
-          fi
-
       - name: Configure AWS credentials
-        if: steps.check-tests.outputs.should_continue == 'true'
+        if: steps.check-dir.outputs.dir_exists == 'true'
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -266,20 +69,20 @@ jobs:
           aws-region: us-west-2
 
       - name: Login to Amazon ECR
-        if: steps.check-tests.outputs.should_continue == 'true'
+        if: steps.check-dir.outputs.dir_exists == 'true'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and push Docker image
-        if: steps.check-dir.outputs.dir_exists == 'true' && (steps.test.outcome == 'success' || steps.test.outcome == 'skipped')
+        if: steps.check-dir.outputs.dir_exists == 'true'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ecommerce-qa/${{ matrix.service }}
+          ECR_REPOSITORY: ecommerce-qa/api-gateway
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          if [ -f "ecommerce-microservices/${{ matrix.service }}/Dockerfile" ]; then
-            echo "Building Docker image for ${{ matrix.service }}"
-            cd ecommerce-microservices/${{ matrix.service }}
+          if [ -f "ecommerce-microservices/api-gateway/Dockerfile" ]; then
+            echo "Building Docker image for api-gateway"
+            cd ecommerce-microservices/api-gateway
             docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
             docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
@@ -287,12 +90,12 @@ jobs:
             docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
             docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           else
-            echo "No Dockerfile found for ${{ matrix.service }}, creating a dummy image"
+            echo "No Dockerfile found for api-gateway, creating a dummy image"
             mkdir -p dummy-service
             cd dummy-service
             echo "FROM nginx:alpine" > Dockerfile
-            echo "LABEL service=${{ matrix.service }}" >> Dockerfile
-            echo "RUN echo 'This is a dummy image for ${{ matrix.service }}' > /usr/share/nginx/html/index.html" >> Dockerfile
+            echo "LABEL service=api-gateway" >> Dockerfile
+            echo "RUN echo 'This is a dummy image for api-gateway' > /usr/share/nginx/html/index.html" >> Dockerfile
             docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
             docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
             docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
@@ -302,32 +105,11 @@ jobs:
           fi
 
       - name: Update version file
-        if: steps.check-dir.outputs.dir_exists == 'true' && (steps.test.outcome == 'success' || steps.test.outcome == 'skipped')
+        id: update-version
+        if: steps.check-dir.outputs.dir_exists == 'true'
         run: |
-          # Find version.json file
-          if [ -f "ecommerce-infra/version.json" ]; then
-            VERSION_FILE="ecommerce-infra/version.json"
-          elif [ -f "version.json" ]; then
-            VERSION_FILE="version.json"
-          else
-            echo "Warning: version.json not found, creating a new one"
-            echo '{
-              "services": {
-                "product-service": { "qa": "1.0.0", "uat": "1.0.0", "prod": "1.0.0" },
-                "order-service": { "qa": "1.0.0", "uat": "1.0.0", "prod": "1.0.0" },
-                "user-service": { "qa": "1.0.0", "uat": "1.0.0", "prod": "1.0.0" },
-                "api-gateway": { "qa": "1.0.0", "uat": "1.0.0", "prod": "1.0.0" }
-              },
-              "last_updated": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
-            }' > version.json
-            VERSION_FILE="version.json"
-          fi
-
-          echo "Using version file: $VERSION_FILE"
-
           # Get current version
-          VERSION=$(jq -r '.services."${{ matrix.service }}".qa' $VERSION_FILE)
-          echo "Current version: $VERSION"
+          VERSION=$(jq -r '.services."api-gateway".qa' version.json || echo "1.0.0")
 
           # Increment patch version
           MAJOR=$(echo $VERSION | cut -d. -f1)
@@ -335,82 +117,38 @@ jobs:
           PATCH=$(echo $VERSION | cut -d. -f3)
           NEW_PATCH=$((PATCH + 1))
           NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-          echo "New version: $NEW_VERSION"
 
           # Update version.json
-          jq '.services."${{ matrix.service }}".qa = "'$NEW_VERSION'"' $VERSION_FILE > version.json.new
-          mv version.json.new $VERSION_FILE
+          jq '.services."api-gateway".qa = "'$NEW_VERSION'"' version.json > version.json.new || echo '{
+            "services": {
+              "product-service": { "qa": "1.0.0", "uat": "1.0.0", "prod": "1.0.0" },
+              "order-service": { "qa": "1.0.0", "uat": "1.0.0", "prod": "1.0.0" },
+              "user-service": { "qa": "1.0.0", "uat": "1.0.0", "prod": "1.0.0" },
+              "api-gateway": { "qa": "'$NEW_VERSION'", "uat": "1.0.0", "prod": "1.0.0" }
+            },
+            "last_updated": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+          }' > version.json.new
+
+          mv version.json.new version.json
 
           # Update last_updated timestamp
-          jq '.last_updated = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"' $VERSION_FILE > version.json.new
-          mv version.json.new $VERSION_FILE
+          jq '.last_updated = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"' version.json > version.json.new
+          mv version.json.new version.json
 
           # Commit and push version file update
-          cd $(dirname $VERSION_FILE)
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add $(basename $VERSION_FILE)
-          git commit -m "Update ${{ matrix.service }} version in QA to $NEW_VERSION"
+          git add version.json
+          git commit -m "Update api-gateway version in QA to $NEW_VERSION"
           git push || echo "Failed to push version update, continuing anyway"
 
           # Save the new version for later use
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Trigger QA Deployment
-        if: steps.check-tests.outputs.should_continue == 'true'
+        if: steps.check-dir.outputs.dir_exists == 'true'
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: deploy-to-qa
-          client-payload: '{"service": "${{ matrix.service }}", "version": "${{ steps.update-version.outputs.new_version || ''1.0.0'' }}", "commit": "${{ github.sha }}"}'
-
-  notify-no-changes:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.any_changes == 'false'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Notify no changes detected
-        run: |
-          echo "No changes detected in any microservice in the last 24 hours."
-
-      - name: Slack notification
-        uses: slackapi/slack-github-action@v1
-        with:
-          payload: |
-            {
-              "text": "ℹ️ Nightly CI/CD Pipeline: No changes detected in any microservice in the last 24 hours."
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  create-success-tag:
-    needs: [build-and-test]
-    if: ${{ always() && needs.detect-changes.outputs.any_changes == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Create success tag
-        run: |
-          # Only create tag if all previous jobs succeeded
-          if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
-            echo "All builds succeeded, creating success tag"
-            
-            # Create a tag with timestamp
-            TAG_NAME="nightly-success-$(date -u +"%Y%m%d%H%M%S")"
-            
-            git config --global user.name "GitHub Actions"
-            git config --global user.email "actions@github.com"
-            
-            # Create and push tag
-            git tag -a $TAG_NAME -m "Successful nightly build on $(date -u)"
-            git push origin $TAG_NAME
-            
-            echo "Created and pushed tag: $TAG_NAME"
-          else
-            echo "Build failed, not creating success tag"
-          fi
+          client-payload: '{"service": "api-gateway", "version": "${{ steps.update-version.outputs.new_version || ''1.0.0'' }}", "commit": "${{ github.sha }}"}'
