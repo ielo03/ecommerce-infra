@@ -159,8 +159,19 @@ jobs:
         run: |
           docker push 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }}
 
+  deploy-to-qa:
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    if: needs.test-and-build.result == 'success'
+    steps:
+      - name: Checkout ecommerce-infra repo
+        uses: actions/checkout@v4
+        with:
+          path: ecommerce-infra
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
       - name: Deploy to QA server
-        if: steps.run_test.outcome == 'success'
         uses: appleboy/ssh-action@v0.1.5
         with:
           host: ${{ secrets.QA_SERVER_HOST }}
