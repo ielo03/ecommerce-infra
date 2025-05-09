@@ -69,6 +69,7 @@ jobs:
     strategy:
       matrix:
         service: ${{ fromJson(needs.check-updated.outputs.updated_services) }}
+        platform: ["linux/amd64"]
       fail-fast: false
     steps:
       - name: Checkout ecommerce-infra repo
@@ -117,7 +118,7 @@ jobs:
         if: steps.run_test.outcome == 'success'
         run: |
           docker buildx build \
-            --platform linux/amd64 \
+            --platform ${{ matrix.platform }} \
             --tag 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }} \
             --load \
             -f ./ecommerce-microservices/${{ matrix.service }}/Dockerfile \
