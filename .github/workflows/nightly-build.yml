@@ -88,7 +88,7 @@ jobs:
           path: ecommerce-microservices
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run test
+      - name: Run unit tests on ${{ matrix.service }}
         id: run_test
         working-directory: ecommerce-microservices/${{ matrix.service }}
         run: |
@@ -96,7 +96,7 @@ jobs:
           npm test
         continue-on-error: false
 
-      - name: Determine next version
+      - name: Determine next version of ${{ matrix.service }}
         id: next_version
         working-directory: ecommerce-infra
         run: |
@@ -107,7 +107,7 @@ jobs:
           next_patch=$((patch + 1))
           echo "next_version=$major.$minor.$next_patch" >> $GITHUB_OUTPUT
 
-      - name: Set version in health checks
+      - name: Set version in health checks for ${{ matrix.service }}
         working-directory: ecommerce-microservices/${{ matrix.service }}
         run: |
           case "${{ matrix.service }}" in
@@ -138,7 +138,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Build Docker image
+      - name: Build ${{ matrix.service }} Docker image
         if: steps.run_test.outcome == 'success'
         run: |
           docker buildx build \
@@ -179,7 +179,7 @@ jobs:
             sleep 1
           done
 
-      - name: Push Docker image
+      - name: Push ${{ matrix.service }} Docker image
         if: steps.run_test.outcome == 'success'
         run: |
           docker push 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }}
