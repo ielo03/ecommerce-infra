@@ -6,6 +6,44 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout ecommerce-microservices repo
+        uses: actions/checkout@v4
+        with:
+          repository: ielo03/ecommerce-microservices
+          path: ecommerce-microservices
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for service updates
+        id: check_updates
+        run: |
+          UPDATED=""
+          for service in api-gateway frontend backend; do
+            ts=$(jq -r ".services[\"$service\"].timestamp" version.json)
+            last_commit=$(git -C ecommerce-microservices log -1 --format=%cI -- $service || echo "")
+            if [[ -n "$last_commit" && "$last_commit" > "$ts" ]]; then
+              UPDATED="$UPDATED $service"
+            fi
+          done
+          echo "updated_services=$UPDATED" >> $GITHUB_OUTPUT
+
+      - name: Run unit-tests
+        if: steps.check_updates.outputs.updated_services != ''
+        run: |
+          for service in ${{ steps.check_updates.outputs.updated_services }}; do
+            echo "Running tests for $service"
+            cd ecommerce-microservices/$service
+            npm install
+            npm test
+            cd ../..
+          done
+
   build-and-push:
     runs-on: ubuntu-latest
 
