@@ -1,4 +1,6 @@
 name: Nightly Build
+permissions:
+  contents: write
 
 on:
   schedule:
@@ -127,11 +129,6 @@ jobs:
             -f ./ecommerce-microservices/${{ matrix.service }}/Dockerfile \
             ./ecommerce-microservices/${{ matrix.service }}
 
-      - name: Push Docker image
-        if: steps.run_test.outcome == 'success'
-        run: |
-          docker push 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }}
-
       - name: Update, commit & push version.json
         if: steps.run_test.outcome == 'success'
         run: |
@@ -139,11 +136,11 @@ jobs:
           NEXT_VERSION=${{ steps.next_version.outputs.next_version }}
           NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           jq --arg svc "${{ matrix.service }}" \
-             --arg ver "$NEXT_VERSION" \
-             --arg ts "$NOW" \
+              --arg ver "$NEXT_VERSION" \
+              --arg ts "$NOW" \
             '.services[$svc].latest    = $ver |
-             .services[$svc].qa        = $ver |
-             .services[$svc].timestamp = $ts' \
+              .services[$svc].qa        = $ver |
+              .services[$svc].timestamp = $ts' \
             version.json > tmp.json \
             && mv tmp.json version.json
           git config user.name "github-actions[bot]"
@@ -151,6 +148,11 @@ jobs:
           git add version.json
           git commit -m "ci: bump ${{ matrix.service }} to $NEXT_VERSION [skip ci]"
           git push origin main
+
+      - name: Push Docker image
+        if: steps.run_test.outcome == 'success'
+        run: |
+          docker push 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }}
 
       - name: Deploy to QA server
         if: steps.run_test.outcome == 'success'
