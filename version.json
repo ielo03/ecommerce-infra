@@ -1,11 +1,11 @@
 {
   "services": {
     "api-gateway": {
-      "qa": "1.0.3",
+      "qa": "1.0.4",
       "uat": "1.0.1",
       "prod": "1.0.1",
-      "latest": "1.0.3",
-      "timestamp": "2025-05-09T21:47:46Z"
+      "latest": "1.0.4",
+      "timestamp": "2025-05-09T22:10:09Z"
     },
     "frontend": {
       "qa": "1.0.3",
