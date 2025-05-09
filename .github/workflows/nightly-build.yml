@@ -27,7 +27,7 @@ jobs:
           UPDATED_JSON=$(cat version.json)
           for service in api-gateway frontend backend; do
             ts=$(echo "$UPDATED_JSON" | jq -r ".services[\"$service\"].timestamp")
-            last_commit=$(git log -1 --format=%cI -- "services/$service/")
+            last_commit=$(git -C ecommerce-microservices log -1 --format=%cI -- "$service" 2>/dev/null || echo "")
             echo "DEBUG: Checking service '$service'"
             echo "DEBUG: Recorded timestamp: $ts"
             echo "DEBUG: Latest commit date:  $last_commit"
