@@ -158,6 +158,5 @@ jobs:
           port: 22
           script: |
             cd ecommerce-infra
-            git pull
-            docker compose down
-            docker compose up -d
+            git pull origin main
+            ./run-qa-environment-ec2.sh
