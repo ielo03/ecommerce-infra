@@ -94,6 +94,7 @@ jobs:
 
       - name: Determine next version
         id: next_version
+        working-directory: ecommerce-infra
         run: |
           latest=$(jq -r ".services[\"${{ matrix.service }}\"].latest" version.json)
           major=$(cut -d. -f1 <<< "$latest")
