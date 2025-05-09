@@ -10,6 +10,10 @@ export ECR_REGISTRY
 # Get the directory where the script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
+# Ensure the infra repo is up-to-date
+cd "$SCRIPT_DIR"
+git pull origin main
+
 # Path to version.json
 VERSION_FILE="$SCRIPT_DIR/version.json"
 
