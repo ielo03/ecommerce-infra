@@ -127,5 +127,32 @@ jobs:
       - name: Push Docker image
         if: steps.run_test.outcome == 'success'
         run: |
-          echo "SUCCESS"
-          # docker push 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }}
+          docker push 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }}
+
+      - name: Update version.json
+        if: steps.run_test.outcome == 'success'
+        run: |
+          NEXT_VERSION=${{ steps.next_version.outputs.next_version }}
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          jq --arg svc "${{ matrix.service }}" \
+             --arg ver "$NEXT_VERSION" \
+             --arg ts "$NOW" \
+             '.services[$svc].latest    = $ver |
+              .services[$svc].qa        = $ver |
+              .services[$svc].timestamp = $ts' \
+            ecommerce-infra/version.json > tmp.json \
+            && mv tmp.json ecommerce-infra/version.json
+
+      - name: Deploy to QA server
+        if: steps.run_test.outcome == 'success'
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.QA_SERVER_HOST }}
+          username: ${{ secrets.QA_SERVER_USER }}
+          key: ${{ secrets.QA_SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            cd /path/to/infra/repo
+            git pull origin main
+            docker compose down
+            docker compose up -d
