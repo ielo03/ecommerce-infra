@@ -69,7 +69,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Create a completely new docker-compose file
-TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose-ec2.yml"
+TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
 # Create the new docker-compose file with the correct database name
 cat > "$TEMP_COMPOSE_FILE" << EOF

@@ -71,7 +71,7 @@ jobs:
     strategy:
       matrix:
         service: ${{ fromJson(needs.check-updated.outputs.updated_services) }}
-        platform: ["linux/amd64"]
+        platform: ["linux/arm64/v8"]
       fail-fast: false
     steps:
       - name: Checkout ecommerce-infra repo
