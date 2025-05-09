@@ -134,7 +134,8 @@ services:
       - DB_CONNECTION_RETRIES=10
       - DB_CONNECTION_RETRY_DELAY=5000
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - app-network
     healthcheck:
@@ -185,5 +186,5 @@ echo "Created new docker-compose file at $TEMP_COMPOSE_FILE"
 
 # Run docker-compose with the new file
 echo "Starting the QA environment..."
-docker-compose -f "$TEMP_COMPOSE_FILE" down -v
+docker-compose -f "$TEMP_COMPOSE_FILE" down
 docker-compose -f "$TEMP_COMPOSE_FILE" up "$@" -d
