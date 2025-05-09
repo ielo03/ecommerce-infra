@@ -24,20 +24,31 @@ jobs:
       - name: Check for service updates
         id: check_updates
         run: |
-          UPDATED_JSON=$(cat version.json)
+          # grab the full version.json into a variable
+          ORIG_JSON=$(cat version.json)
+
+          # start with an empty JSON array
+          UPDATED_SERVICES="[]"
+
           for service in api-gateway frontend backend; do
-            ts=$(echo "$UPDATED_JSON" | jq -r ".services[\"$service\"].timestamp")
-            last_commit=$(git -C ecommerce-microservices log -1 --format=%cI -- "$service" 2>/dev/null || echo "")
+            # pull the saved timestamp
+            ts=$(jq -r ".services[\"$service\"].timestamp" <<<"$ORIG_JSON")
+            # find the last commit touching that subdir
+            last_commit=$(git -C ecommerce-microservices \
+                            log -1 --format=%cI -- "$service" 2>/dev/null || echo "")
+
             echo "DEBUG: Checking service '$service'"
-            echo "DEBUG: Recorded timestamp: $ts"
-            echo "DEBUG: Latest commit date:  $last_commit"
+            echo "DEBUG:   recorded ts: $ts"
+            echo "DEBUG:   latest commit: $last_commit"
+
             if [[ -n "$last_commit" ]]; then
               ts_epoch=$(date -d "$ts" +%s)
               commit_epoch=$(date -d "$last_commit" +%s)
               echo "DEBUG:   ts_epoch=$ts_epoch, commit_epoch=$commit_epoch"
 
               if (( commit_epoch > ts_epoch )); then
-                UPDATED_JSON=$(jq -c --arg srv "$service" '. + [$srv]' <<< "$UPDATED_JSON")
+                # append this service name into the JSON array
+                UPDATED_SERVICES=$(jq -c --arg srv "$service" '. + [$srv]' <<<"$UPDATED_SERVICES")
                 echo "DEBUG:   → marking '$service' as updated"
               else
                 echo "DEBUG:   → no new commits for '$service'"
@@ -46,7 +57,10 @@ jobs:
               echo "DEBUG:   → no commits found at all for '$service'"
             fi
           done
-          echo "$UPDATED_JSON" > version.json
+
+          # expose the array to downstream steps
+          echo "updated_services=$UPDATED_SERVICES" >> $GITHUB_OUTPUT
+        shell: bash
 
   test-and-build:
     needs: check-updated
