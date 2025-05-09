@@ -76,6 +76,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: ecommerce-infra
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Checkout ecommerce-microservices repo
         uses: actions/checkout@v4
