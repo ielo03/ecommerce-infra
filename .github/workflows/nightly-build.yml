@@ -39,14 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.test.outputs.updated_services != '[]'
     outputs:
-      successful_services: ${{ steps.set_output.outputs.successful_services }}
+      successful_services: ${{ steps.collect-success.outputs.successful_services }}
     strategy:
       matrix:
         service: ${{ fromJson(needs.test.outputs.updated_services) }}
     steps:
-      - name: Initialize successful.json
-        run: echo "[]" > successful.json
-
       - name: Checkout ecommerce-microservices repo
         uses: actions/checkout@v4
         with:
@@ -60,14 +57,17 @@ jobs:
           npm install
           npm test
 
-      - name: Mark service as successful
+      - name: Set service output
         if: success()
-        run: echo "\"${{ matrix.service }}\"" >> successful.json
+        id: set-service-output
+        run: echo "service=${{ matrix.service }}" >> $GITHUB_OUTPUT
 
-      - name: Set output of successful tests
-        if: success()
-        id: set_output
-        run: echo "successful_services=$(jq -c . successful.json)" >> $GITHUB_OUTPUT
+      - name: Collect successful services
+        if: always()
+        id: collect-success
+        run: |
+          echo "[\"${{ matrix.service }}\"]" > successful.json
+          echo "successful_services=$(<successful.json)" >> $GITHUB_OUTPUT
 
   build-and-push:
     needs: test-matrix
