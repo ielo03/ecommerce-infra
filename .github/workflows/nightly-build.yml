@@ -24,15 +24,21 @@ jobs:
       - name: Check for service updates
         id: check_updates
         run: |
-          UPDATED_JSON="[]"
+          UPDATED_JSON=$(cat version.json)
           for service in api-gateway frontend backend; do
-            ts=$(jq -r ".services[\"$service\"].timestamp" version.json)
-            last_commit=$(git -C ecommerce-microservices log -1 --format=%cI -- $service || echo "")
+            ts=$(echo "$UPDATED_JSON" | jq -r ".services[\"$service\"].timestamp")
+            last_commit=$(git log -1 --format=%cI -- "services/$service/")
+            echo "DEBUG: Checking service '$service'"
+            echo "DEBUG: Recorded timestamp: $ts"
+            echo "DEBUG: Latest commit date:  $last_commit"
             if [[ -n "$last_commit" && "$last_commit" > "$ts" ]]; then
-              UPDATED_JSON=$(jq -c --arg srv "$service" '. + [$srv]' <<< "$UPDATED_JSON")
+              UPDATED_JSON=$(echo "$UPDATED_JSON" | jq ".services[\"$service\"].timestamp = \"$last_commit\"")
+              echo "DEBUG:  -> Marking '$service' as updated"
+            else
+              echo "DEBUG:  -> No new commits for '$service'"
             fi
           done
-          echo "updated_services=$UPDATED_JSON" >> $GITHUB_OUTPUT
+          echo "$UPDATED_JSON" > version.json
 
   test-and-build:
     needs: check-updated
