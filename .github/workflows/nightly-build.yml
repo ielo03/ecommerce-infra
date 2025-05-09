@@ -95,7 +95,7 @@ jobs:
       - name: Determine next version
         id: next_version
         run: |
-          latest=$(jq -r ".services[\"${{ matrix.service }}\"].latest" ecommerce-infra/version.json)
+          latest=$(jq -r ".services[\"${{ matrix.service }}\"].latest" version.json)
           major=$(cut -d. -f1 <<< "$latest")
           minor=$(cut -d. -f2 <<< "$latest")
           patch=$(cut -d. -f3 <<< "$latest")
@@ -132,6 +132,7 @@ jobs:
       - name: Update, commit & push version.json
         if: steps.run_test.outcome == 'success'
         run: |
+          cd ecommerce-infra
           NEXT_VERSION=${{ steps.next_version.outputs.next_version }}
           NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           jq --arg svc "${{ matrix.service }}" \
@@ -140,11 +141,11 @@ jobs:
             '.services[$svc].latest    = $ver |
              .services[$svc].qa        = $ver |
              .services[$svc].timestamp = $ts' \
-            ecommerce-infra/version.json > tmp.json \
-            && mv tmp.json ecommerce-infra/version.json
+            version.json > tmp.json \
+            && mv tmp.json version.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ecommerce-infra/version.json
+          git add version.json
           git commit -m "ci: bump ${{ matrix.service }} to $NEXT_VERSION [skip ci]"
           git push origin main
 
