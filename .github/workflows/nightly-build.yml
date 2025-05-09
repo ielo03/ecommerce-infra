@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  check-updated:
     runs-on: ubuntu-latest
     outputs:
       updated_services: ${{ steps.check_updates.outputs.updated_services }}
@@ -34,15 +34,14 @@ jobs:
           done
           echo "updated_services=$UPDATED_JSON" >> $GITHUB_OUTPUT
 
-  test-matrix:
-    needs: test
+  test-and-build:
+    needs: check-updated
     runs-on: ubuntu-latest
-    if: needs.test.outputs.updated_services != '[]'
-    outputs:
-      successful_services: ${{ steps.collect-success.outputs.successful_services }}
+    if: needs.check-updated.outputs.updated_services != '[]'
     strategy:
       matrix:
-        service: ${{ fromJson(needs.test.outputs.updated_services) }}
+        service: ${{ fromJson(needs.check-updated.outputs.updated_services) }}
+      fail-fast: false
     steps:
       - name: Checkout ecommerce-microservices repo
         uses: actions/checkout@v4
@@ -51,62 +50,32 @@ jobs:
           path: ecommerce-microservices
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run tests
+      - name: Run test
+        id: run_test
         working-directory: ecommerce-microservices/${{ matrix.service }}
         run: |
           npm install
           npm test
-
-      - name: Set service output
-        if: success()
-        id: set-service-output
-        run: echo "service=${{ matrix.service }}" >> $GITHUB_OUTPUT
-
-      - name: Collect successful services
-        if: always()
-        id: collect-success
-        run: |
-          echo "[\"${{ matrix.service }}\"]" > successful.json
-          echo "successful_services=$(<successful.json)" >> $GITHUB_OUTPUT
-
-  build-and-push:
-    needs: test-matrix
-    if: needs.test-matrix.outputs.successful_services != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: ${{ fromJson(needs.test-matrix.outputs.successful_services) }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Checkout ecommerce-microservices repo
-        uses: actions/checkout@v4
-        with:
-          repository: ielo03/ecommerce-microservices
-          path: ecommerce-microservices
-          token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: false
 
       - name: Set up Docker Buildx
+        if: steps.run_test.outcome == 'success'
         uses: docker/setup-buildx-action@v3
 
-      - name: Set up QEMU for ARM emulation
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - name: Log in to Amazon ECR
+        if: steps.run_test.outcome == 'success'
         uses: aws-actions/amazon-ecr-login@v2
         env:
           AWS_REGION: us-west-2
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      # - name: Build and push image for Arm64
+      # - name: Build and push image
+      #   if: steps.run_test.outcome == 'success'
       #   run: |
       #     docker buildx build \
-      #       --platform linux/arm64 \
-      #       --tag 061039790334.dkr.ecr.us-west-2.amazonaws.com/api-gateway:nightly \
+      #       --platform linux/amd64 \
+      #       --tag 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:nightly \
       #       --push \
-      #       -f ./api-gateway/Dockerfile .
+      #       -f ./ecommerce-microservices/${{ matrix.service }}/Dockerfile \
+      #       ./ecommerce-microservices/${{ matrix.service }}
