@@ -58,6 +58,16 @@ jobs:
           npm test
         continue-on-error: false
 
+      - name: Determine next version
+        id: next_version
+        run: |
+          latest=$(jq -r ".services[\"${{ matrix.service }}\"].latest" version.json)
+          major=$(cut -d. -f1 <<< "$latest")
+          minor=$(cut -d. -f2 <<< "$latest")
+          patch=$(cut -d. -f3 <<< "$latest")
+          next_patch=$((patch + 1))
+          echo "next_version=$major.$minor.$next_patch" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         if: steps.run_test.outcome == 'success'
         uses: docker/setup-buildx-action@v3
@@ -70,12 +80,18 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      # - name: Build and push image
-      #   if: steps.run_test.outcome == 'success'
-      #   run: |
-      #     docker buildx build \
-      #       --platform linux/amd64 \
-      #       --tag 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:nightly \
-      #       --push \
-      #       -f ./ecommerce-microservices/${{ matrix.service }}/Dockerfile \
-      #       ./ecommerce-microservices/${{ matrix.service }}
+      - name: Build Docker image
+        if: steps.run_test.outcome == 'success'
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }} \
+            --load \
+            -f ./ecommerce-microservices/${{ matrix.service }}/Dockerfile \
+            ./ecommerce-microservices/${{ matrix.service }}
+
+      - name: Push Docker image
+        if: steps.run_test.outcome == 'success'
+        run: |
+          echo "SUCCESS"
+          # docker push 061039790334.dkr.ecr.us-west-2.amazonaws.com/${{ matrix.service }}:${{ steps.next_version.outputs.next_version }}
