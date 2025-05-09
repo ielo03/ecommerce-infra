@@ -107,6 +107,25 @@ jobs:
           next_patch=$((patch + 1))
           echo "next_version=$major.$minor.$next_patch" >> $GITHUB_OUTPUT
 
+      - name: Set version in health checks
+        working-directory: ecommerce-microservices/${{ matrix.service }}
+        run: |
+          case "${{ matrix.service }}" in
+            frontend)
+              file="server.js"
+              placeholder='${FRONTEND_VERSION}'
+              ;;
+            backend)
+              file="index.js"
+              placeholder='${BACKEND_VERSION}'
+              ;;
+            api-gateway)
+              file="index.js"
+              placeholder='${API_GATEWAY_VERSION}'
+              ;;
+          esac
+          sed -i "s|$placeholder|${{ steps.next_version.outputs.next_version }}|g" "$file"
+
       - name: Set up Docker Buildx
         if: steps.run_test.outcome == 'success'
         uses: docker/setup-buildx-action@v3
