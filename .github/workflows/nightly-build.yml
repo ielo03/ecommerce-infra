@@ -8,7 +8,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
+    outputs:
+      updated_services: ${{ steps.check_updates.outputs.updated_services }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,29 +24,58 @@ jobs:
       - name: Check for service updates
         id: check_updates
         run: |
-          UPDATED=""
+          UPDATED_JSON="[]"
           for service in api-gateway frontend backend; do
             ts=$(jq -r ".services[\"$service\"].timestamp" version.json)
             last_commit=$(git -C ecommerce-microservices log -1 --format=%cI -- $service || echo "")
             if [[ -n "$last_commit" && "$last_commit" > "$ts" ]]; then
-              UPDATED="$UPDATED $service"
+              UPDATED_JSON=$(jq -c --arg srv "$service" '. + [$srv]' <<< "$UPDATED_JSON")
             fi
           done
-          echo "updated_services=$UPDATED" >> $GITHUB_OUTPUT
+          echo "updated_services=$UPDATED_JSON" >> $GITHUB_OUTPUT
 
-      - name: Run unit-tests
-        if: steps.check_updates.outputs.updated_services != ''
+  test-matrix:
+    needs: test
+    runs-on: ubuntu-latest
+    if: needs.test.outputs.updated_services != '[]'
+    outputs:
+      successful_services: ${{ steps.set_output.outputs.successful_services }}
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.test.outputs.updated_services) }}
+    steps:
+      - name: Initialize successful.json
+        run: echo "[]" > successful.json
+
+      - name: Checkout ecommerce-microservices repo
+        uses: actions/checkout@v4
+        with:
+          repository: ielo03/ecommerce-microservices
+          path: ecommerce-microservices
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        working-directory: ecommerce-microservices/${{ matrix.service }}
         run: |
-          for service in ${{ steps.check_updates.outputs.updated_services }}; do
-            echo "Running tests for $service"
-            cd ecommerce-microservices/$service
-            npm install
-            npm test
-            cd ../..
-          done
+          npm install
+          npm test
+
+      - name: Mark service as successful
+        if: success()
+        run: echo "\"${{ matrix.service }}\"" >> successful.json
+
+      - name: Set output of successful tests
+        if: success()
+        id: set_output
+        run: echo "successful_services=$(jq -c . successful.json)" >> $GITHUB_OUTPUT
 
   build-and-push:
+    needs: test-matrix
+    if: needs.test-matrix.outputs.successful_services != '[]'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.test-matrix.outputs.successful_services) }}
 
     steps:
       - name: Checkout repository
