@@ -43,6 +43,11 @@ jobs:
         service: ${{ fromJson(needs.check-updated.outputs.updated_services) }}
       fail-fast: false
     steps:
+      - name: Checkout ecommerce-infra repo
+        uses: actions/checkout@v4
+        with:
+          path: ecommerce-infra
+
       - name: Checkout ecommerce-microservices repo
         uses: actions/checkout@v4
         with:
@@ -61,7 +66,7 @@ jobs:
       - name: Determine next version
         id: next_version
         run: |
-          latest=$(jq -r ".services[\"${{ matrix.service }}\"].latest" version.json)
+          latest=$(jq -r ".services[\"${{ matrix.service }}\"].latest" ecommerce-infra/version.json)
           major=$(cut -d. -f1 <<< "$latest")
           minor=$(cut -d. -f2 <<< "$latest")
           patch=$(cut -d. -f3 <<< "$latest")
