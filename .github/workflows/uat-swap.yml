@@ -38,15 +38,15 @@ jobs:
           cat current-records.json
 
           # Extract blue and green IPs and weights
-          BLUE_IP=$(jq -r '.[] | select(.SetIdentifier=="blue") | .ResourceRecords[0].Value' current-records.json)
-          GREEN_IP=$(jq -r '.[] | select(.SetIdentifier=="green") | .ResourceRecords[0].Value' current-records.json)
-          BLUE_WEIGHT=$(jq -r '.[] | select(.SetIdentifier=="blue") | .Weight' current-records.json)
-          GREEN_WEIGHT=$(jq -r '.[] | select(.SetIdentifier=="green") | .Weight' current-records.json)
+          BLUE_IP=$(jq -r '.[] | select(.SetIdentifier=="uat1") | .ResourceRecords[0].Value' current-records.json)
+          GREEN_IP=$(jq -r '.[] | select(.SetIdentifier=="uat2") | .ResourceRecords[0].Value' current-records.json)
+          BLUE_WEIGHT=$(jq -r '.[] | select(.SetIdentifier=="uat1") | .Weight' current-records.json)
+          GREEN_WEIGHT=$(jq -r '.[] | select(.SetIdentifier=="uat2") | .Weight' current-records.json)
 
           # Validate extracted values
           if [ -z "$BLUE_IP" ] || [ -z "$GREEN_IP" ]; then
             echo "ERROR: Failed to extract blue or green IP addresses from Route53 records"
-            echo "Make sure the Route53 records exist with SetIdentifier 'blue' and 'green'"
+            echo "Make sure the Route53 records exist with SetIdentifier 'uat1' and 'uat2'"
             exit 1
           fi
 
@@ -140,7 +140,7 @@ jobs:
                 "ResourceRecordSet": {
                   "Name": "${{ env.DOMAIN_NAME }}",
                   "Type": "A",
-                  "SetIdentifier": "blue",
+                  "SetIdentifier": "uat1",
                   "Weight": ${BLUE_WEIGHT},
                   "TTL": 60,
                   "ResourceRecords": [ { "Value": "${{ steps.identify.outputs.blue_ip }}" } ]
@@ -151,7 +151,7 @@ jobs:
                 "ResourceRecordSet": {
                   "Name": "${{ env.DOMAIN_NAME }}",
                   "Type": "A",
-                  "SetIdentifier": "green",
+                  "SetIdentifier": "uat2",
                   "Weight": ${GREEN_WEIGHT},
                   "TTL": 60,
                   "ResourceRecords": [ { "Value": "${{ steps.identify.outputs.green_ip }}" } ]
