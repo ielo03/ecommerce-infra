@@ -175,10 +175,3 @@ jobs:
 
           echo "Route53 changes applied successfully"
           echo "Traffic is now being directed to the ${{ steps.identify.outputs.inactive }} environment"
-
-      - name: Wait for DNS propagation
-        if: steps.smoke_test.outputs.smoke_test_result == '0'
-        run: |
-          echo "Waiting for DNS changes to propagate..."
-          sleep 60
-          echo "Blue-Green swap completed successfully!"
