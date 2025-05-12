@@ -27,10 +27,10 @@ jobs:
       - name: Check for QA changes
         id: check-qa
         run: |
-          CHANGES=$(git diff HEAD^ HEAD -- version.json | grep -E '"qa": "' || echo "")
+          CHANGES=$(git diff -U0 $(git rev-list -n 1 HEAD -- version.json)^..HEAD -- version.json | grep -E '^\+.*"qa": ' || echo "")
           if [ -n "$CHANGES" ]; then
             echo "changes=true" >> $GITHUB_OUTPUT
-            SERVICES=$(echo "$CHANGES" | grep -oE '"[^"]+": {' | sed 's/": {//' | sed 's/"//g' | tr '\n' ',' | sed 's/,$//')
+            SERVICES=$(echo "$CHANGES" | grep -oE '^\+.*"[^"]+": ' | sed 's/^\+//' | sed 's/": //' | tr '\n' ',' | sed 's/,$//')
             echo "services=$SERVICES" >> $GITHUB_OUTPUT
           else
             echo "changes=false" >> $GITHUB_OUTPUT
@@ -40,10 +40,10 @@ jobs:
       - name: Check for UAT changes
         id: check-uat
         run: |
-          CHANGES=$(git diff HEAD^ HEAD -- version.json | grep -E '"uat": "' || echo "")
+          CHANGES=$(git diff -U0 $(git rev-list -n 1 HEAD -- version.json)^..HEAD -- version.json | grep -E '^\+.*"uat": ' || echo "")
           if [ -n "$CHANGES" ]; then
             echo "changes=true" >> $GITHUB_OUTPUT
-            SERVICES=$(echo "$CHANGES" | grep -oE '"[^"]+": {' | sed 's/": {//' | sed 's/"//g' | tr '\n' ',' | sed 's/,$//')
+            SERVICES=$(echo "$CHANGES" | grep -oE '^\+.*"[^"]+": ' | sed 's/^\+//' | sed 's/": //' | tr '\n' ',' | sed 's/,$//')
             echo "services=$SERVICES" >> $GITHUB_OUTPUT
           else
             echo "changes=false" >> $GITHUB_OUTPUT
@@ -53,10 +53,10 @@ jobs:
       - name: Check for Production changes
         id: check-prod
         run: |
-          CHANGES=$(git diff HEAD^ HEAD -- version.json | grep -E '"prod": "' || echo "")
+          CHANGES=$(git diff -U0 $(git rev-list -n 1 HEAD -- version.json)^..HEAD -- version.json | grep -E '^\+.*"prod": ' || echo "")
           if [ -n "$CHANGES" ]; then
             echo "changes=true" >> $GITHUB_OUTPUT
-            SERVICES=$(echo "$CHANGES" | grep -oE '"[^"]+": {' | sed 's/": {//' | sed 's/"//g' | tr '\n' ',' | sed 's/,$//')
+            SERVICES=$(echo "$CHANGES" | grep -oE '^\+.*"[^"]+": ' | sed 's/^\+//' | sed 's/": //' | tr '\n' ',' | sed 's/,$//')
             echo "services=$SERVICES" >> $GITHUB_OUTPUT
           else
             echo "changes=false" >> $GITHUB_OUTPUT
