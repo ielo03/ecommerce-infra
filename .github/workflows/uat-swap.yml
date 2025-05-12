@@ -2,22 +2,12 @@ name: UAT Blue-Green Swap
 permissions:
   contents: write
 
-on:
-  workflow_dispatch:
-    inputs:
-      hosted_zone_id:
-        description: "AWS Route53 Hosted Zone ID"
-        required: true
-        default: "Z1004002O65LEDO96H9N"
-      domain_name:
-        description: "Domain name for the application"
-        required: true
-        default: "uat.colbydobson.com."
+on: workflow_dispatch
 
 env:
   AWS_REGION: "us-west-2"
-  DOMAIN_NAME: ${{ github.event.inputs.domain_name }}
-  HOSTED_ZONE_ID: ${{ github.event.inputs.hosted_zone_id }}
+  DOMAIN_NAME: "uat.colbydobson.com."
+  HOSTED_ZONE_ID: "Z1004002O65LEDO96H9N"
 
 jobs:
   switch-blue-green:
