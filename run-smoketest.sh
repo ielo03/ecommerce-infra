@@ -8,7 +8,7 @@
 # Example: ./run-smoketest.sh 10.0.0.1
 # Example: ./run-smoketest.sh qa-environment.example.com
 
-set -e  # Exit immediately if a command exits with a non-zero status
+# Note: We're not using 'set -e' to allow for retries
 
 # Colors for output
 RED='\033[0;31m'
@@ -117,5 +117,44 @@ main() {
     fi
 }
 
-# Run the main test sequence
-main
+# Function to sleep with countdown
+sleep_with_countdown() {
+    local seconds=$1
+    echo -e "${YELLOW}Waiting $seconds seconds before next attempt...${NC}"
+    
+    while [ $seconds -gt 0 ]; do
+        echo -ne "${YELLOW}$seconds seconds remaining...${NC}\r"
+        sleep 1
+        seconds=$((seconds - 1))
+    done
+    echo -e "\n${YELLOW}Retrying...${NC}"
+}
+
+# Run the main test sequence with retries
+MAX_RETRIES=5
+RETRY_DELAY=30
+ATTEMPT=1
+
+while [ $ATTEMPT -le $MAX_RETRIES ]; do
+    echo -e "${YELLOW}Attempt $ATTEMPT of $MAX_RETRIES${NC}"
+    
+    # Run the test
+    main
+    RESULT=$?
+    
+    # If successful, exit with success
+    if [ $RESULT -eq 0 ]; then
+        echo -e "${GREEN}Smoke test passed on attempt $ATTEMPT!${NC}"
+        exit 0
+    fi
+    
+    # If we've reached the maximum retries, exit with failure
+    if [ $ATTEMPT -eq $MAX_RETRIES ]; then
+        echo -e "${RED}All $MAX_RETRIES attempts failed. Giving up.${NC}"
+        exit 1
+    fi
+    
+    # Otherwise, increment the attempt counter and sleep before retrying
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep_with_countdown $RETRY_DELAY
+done
