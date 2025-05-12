@@ -17,7 +17,23 @@ YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 # Get IP address from command line argument
-IP_ADDRESS=${1:-"localhost"}
+if [ -z "$1" ]; then
+  echo -e "${RED}Error: No IP address provided${NC}"
+  echo -e "Usage: ./run-smoketest.sh [ip-address]"
+  echo -e "Example: ./run-smoketest.sh 10.0.0.1"
+  echo -e "Example: ./run-smoketest.sh qa-environment.example.com"
+  exit 1
+fi
+
+IP_ADDRESS="$1"
+
+# Validate IP address is not localhost
+if [ "$IP_ADDRESS" == "localhost" ] || [ "$IP_ADDRESS" == "127.0.0.1" ]; then
+  echo -e "${RED}Error: localhost is not a valid target for smoke tests${NC}"
+  echo -e "Please provide an EC2 instance IP address or hostname"
+  exit 1
+fi
+
 BASE_URL="http://${IP_ADDRESS}:8080"
 
 echo -e "${YELLOW}Starting smoke tests for deployment at ${IP_ADDRESS}...${NC}"
