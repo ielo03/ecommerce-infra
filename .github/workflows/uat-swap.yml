@@ -1,0 +1,167 @@
+name: UAT Blue-Green Swap
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      hosted_zone_id:
+        description: "AWS Route53 Hosted Zone ID"
+        required: true
+        default: "Z1004002O65LEDO96H9N"
+      domain_name:
+        description: "Domain name for the application"
+        required: true
+        default: "uat.colbydobson.com."
+
+env:
+  AWS_REGION: "us-west-2"
+  DOMAIN_NAME: ${{ github.event.inputs.domain_name }}
+  HOSTED_ZONE_ID: ${{ github.event.inputs.hosted_zone_id }}
+
+jobs:
+  switch-blue-green:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Identify Blue-Green Current State
+        id: identify
+        run: |
+          # Get current record sets for the domain
+          aws route53 list-resource-record-sets \
+            --hosted-zone-id ${{ env.HOSTED_ZONE_ID }} \
+            --query "ResourceRecordSets[?Name=='${{ env.DOMAIN_NAME }}']" \
+            --output json > current-records.json
+
+          # Extract blue and green IPs and weights
+          BLUE_IP=$(jq -r '.[] | select(.SetIdentifier=="blue") | .ResourceRecords[0].Value' current-records.json)
+          GREEN_IP=$(jq -r '.[] | select(.SetIdentifier=="green") | .ResourceRecords[0].Value' current-records.json)
+          BLUE_WEIGHT=$(jq -r '.[] | select(.SetIdentifier=="blue") | .Weight' current-records.json)
+          GREEN_WEIGHT=$(jq -r '.[] | select(.SetIdentifier=="green") | .Weight' current-records.json)
+
+          echo "Current configuration:"
+          echo "Blue IP: $BLUE_IP (Weight: $BLUE_WEIGHT)"
+          echo "Green IP: $GREEN_IP (Weight: $GREEN_WEIGHT)"
+
+          # Determine which environment is active
+          if [ "$BLUE_WEIGHT" -gt "$GREEN_WEIGHT" ]; then
+            ACTIVE="blue"
+            INACTIVE="green"
+            echo "Blue is currently active"
+          else
+            ACTIVE="green"
+            INACTIVE="blue"
+            echo "Green is currently active"
+          fi
+
+          # Set outputs for next steps
+          echo "blue_ip=$BLUE_IP" >> $GITHUB_OUTPUT
+          echo "green_ip=$GREEN_IP" >> $GITHUB_OUTPUT
+          echo "active=$ACTIVE" >> $GITHUB_OUTPUT
+          echo "inactive=$INACTIVE" >> $GITHUB_OUTPUT
+
+      - name: Run Smoke Test on Inactive Environment
+        id: smoke_test
+        run: |
+          echo "Running smoke test on inactive ${{ steps.identify.outputs.inactive }} environment before switching traffic..."
+          chmod +x ./ecommerce-infra/run-smoketest.sh
+
+          # Get the IP of the inactive environment (the one we want to switch to)
+          if [ "${{ steps.identify.outputs.inactive }}" == "blue" ]; then
+            TARGET_IP="${{ steps.identify.outputs.blue_ip }}"
+          else
+            TARGET_IP="${{ steps.identify.outputs.green_ip }}"
+          fi
+
+          echo "Target environment IP: $TARGET_IP"
+
+          # Run the smoke test
+          ./ecommerce-infra/run-smoketest.sh $TARGET_IP
+
+          # Store the result
+          SMOKE_TEST_RESULT=$?
+          echo "smoke_test_result=$SMOKE_TEST_RESULT" >> $GITHUB_OUTPUT
+
+          if [ $SMOKE_TEST_RESULT -eq 0 ]; then
+            echo "✅ Smoke test passed! The inactive environment is healthy and ready for traffic."
+          else
+            echo "❌ Smoke test failed! Cannot switch traffic to an unhealthy environment."
+            exit 1
+          fi
+
+      - name: Create Swap Configuration
+        id: create_config
+        if: steps.smoke_test.outputs.smoke_test_result == '0'
+        run: |
+          echo "Creating swap configuration since smoke test passed..."
+
+          # Set weights based on active environment
+          if [ "${{ steps.identify.outputs.active }}" == "blue" ]; then
+            BLUE_WEIGHT=0
+            GREEN_WEIGHT=100
+          else
+            BLUE_WEIGHT=100
+            GREEN_WEIGHT=0
+          fi
+
+          # Create swap-weights.json with swapped weights
+          cat > swap-weights.json << EOF
+          {
+            "Comment": "Blue/Green swap: sending traffic to ${{ steps.identify.outputs.inactive }} environment",
+            "Changes": [
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "${{ env.DOMAIN_NAME }}",
+                  "Type": "A",
+                  "SetIdentifier": "blue",
+                  "Weight": ${BLUE_WEIGHT},
+                  "TTL": 60,
+                  "ResourceRecords": [ { "Value": "${{ steps.identify.outputs.blue_ip }}" } ]
+                }
+              },
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "${{ env.DOMAIN_NAME }}",
+                  "Type": "A",
+                  "SetIdentifier": "green",
+                  "Weight": ${GREEN_WEIGHT},
+                  "TTL": 60,
+                  "ResourceRecords": [ { "Value": "${{ steps.identify.outputs.green_ip }}" } ]
+                }
+              }
+            ]
+          }
+          EOF
+
+          echo "Created swap configuration:"
+          cat swap-weights.json
+
+      - name: Apply Route53 Changes
+        if: steps.smoke_test.outputs.smoke_test_result == '0'
+        run: |
+          echo "Applying Route53 changes to swap traffic from ${{ steps.identify.outputs.active }} to ${{ steps.identify.outputs.inactive }}..."
+
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id ${{ env.HOSTED_ZONE_ID }} \
+            --change-batch file://swap-weights.json
+
+          echo "Route53 changes applied successfully"
+          echo "Traffic is now being directed to the ${{ steps.identify.outputs.inactive }} environment"
+
+      - name: Wait for DNS propagation
+        if: steps.smoke_test.outputs.smoke_test_result == '0'
+        run: |
+          echo "Waiting for DNS changes to propagate..."
+          sleep 60
+          echo "Blue-Green swap completed successfully!"
