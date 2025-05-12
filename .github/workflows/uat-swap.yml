@@ -63,7 +63,7 @@ jobs:
         id: smoke_test
         run: |
           echo "Running smoke test on inactive ${{ steps.identify.outputs.inactive }} environment before switching traffic..."
-          chmod +x ./ecommerce-infra/run-smoketest.sh
+          chmod +x ./run-smoketest.sh
 
           # Get the IP of the inactive environment (the one we want to switch to)
           if [ "${{ steps.identify.outputs.inactive }}" == "blue" ]; then
