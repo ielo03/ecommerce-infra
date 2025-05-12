@@ -85,7 +85,7 @@ jobs:
           echo "Target environment IP: $TARGET_IP"
 
           # Run the smoke test
-          ./ecommerce-infra/run-smoketest.sh $TARGET_IP
+          ./run-smoketest.sh $TARGET_IP
 
           # Store the result
           SMOKE_TEST_RESULT=$?
