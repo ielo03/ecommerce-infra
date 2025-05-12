@@ -193,8 +193,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: ecommerce-infra
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
+          persist-credentials: false # disable the built‑in token
+          token: ${{ secrets.PAT_FOR_CI }}
 
       - name: Deploy to QA server
         uses: appleboy/ssh-action@v0.1.5

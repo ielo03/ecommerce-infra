@@ -87,56 +87,34 @@ jobs:
             git pull origin main
             ./run-qa-environment-ec2.sh
 
-  # deploy-uat:
-  #   needs: detect-changes
-  #   if: needs.detect-changes.outputs.uat-changes == 'true'
-  #   runs-on: ubuntu-latest
+  deploy-uat:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.uat-changes == 'true'
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-  #     - name: Configure AWS credentials
-  #       uses: aws-actions/configure-aws-credentials@v1
-  #       with:
-  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  #         aws-region: us-west-2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
 
-  #     - name: Update kubeconfig
-  #       run: aws eks update-kubeconfig --name ecommerce-eks-uat --region us-west-2
+  deploy-prod:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prod-changes == 'true'
+    runs-on: ubuntu-latest
 
-  #     - name: Deploy to UAT
-  #       run: |
-  #         IFS=',' read -ra SERVICES <<< "${{ needs.detect-changes.outputs.uat-services }}"
-  #         for SERVICE in "${SERVICES[@]}"; do
-  #           echo "Deploying $SERVICE to UAT environment..."
-  #           ./scripts/deploy-uat.sh $SERVICE
-  #         done
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-  # deploy-prod:
-  #   needs: detect-changes
-  #   if: needs.detect-changes.outputs.prod-changes == 'true'
-  #   runs-on: ubuntu-latest
-
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v3
-
-  #     - name: Configure AWS credentials
-  #       uses: aws-actions/configure-aws-credentials@v1
-  #       with:
-  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  #         aws-region: us-west-2
-
-  #     - name: Update kubeconfig
-  #       run: aws eks update-kubeconfig --name ecommerce-eks-prod --region us-west-2
-
-  #     - name: Deploy to Production
-  #       run: |
-  #         IFS=',' read -ra SERVICES <<< "${{ needs.detect-changes.outputs.prod-services }}"
-  #         for SERVICE in "${SERVICES[@]}"; do
-  #           echo "Deploying $SERVICE to Production environment..."
-  #           ./scripts/deploy-prod.sh $SERVICE
-  #         done
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
