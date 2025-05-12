@@ -22,6 +22,7 @@ jobs:
           repository: ielo03/ecommerce-microservices
           path: ecommerce-microservices
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Check for service updates
         id: check_updates
