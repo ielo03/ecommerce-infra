@@ -211,6 +211,7 @@ jobs:
 
           # Run the smoke test with explicit IP address
           echo "Executing: ./run-smoketest.sh $TARGET_IP"
+          cat run-smoketest.sh
           ./run-smoketest.sh "$TARGET_IP"
 
           # Store the result
