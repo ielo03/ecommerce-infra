@@ -49,12 +49,15 @@ test_endpoint() {
     
     echo -e "\n${YELLOW}$description${NC}"
     
-    # Build curl command
-    local curl_cmd="curl -s -o response.json -w '%{http_code}' -X $method ${BASE_URL}${endpoint}"
+    # Create a temporary file for the response
+    local response_file=$(mktemp)
+    
+    # Build curl command with timeout and connection timeout
+    local curl_cmd="curl -s -o $response_file -w '%{http_code}' -X $method --connect-timeout 10 --max-time 30 ${BASE_URL}${endpoint}"
     
     # Execute curl command
     echo "Executing: $curl_cmd"
-    status_code=$(eval $curl_cmd)
+    status_code=$(eval $curl_cmd || echo "000")
     
     # Check status code
     if [ "$status_code" -eq "$expected_status" ]; then
@@ -62,19 +65,33 @@ test_endpoint() {
         
         # Print response for debugging
         echo "Response:"
-        cat response.json | grep -v "^$" | head -20
-        if [ $(cat response.json | wc -l) -gt 20 ]; then
-            echo "... (response truncated)"
+        if [ -s "$response_file" ]; then
+            cat "$response_file" | grep -v "^$" | head -20
+            if [ $(cat "$response_file" | wc -l) -gt 20 ]; then
+                echo "... (response truncated)"
+            fi
+        else
+            echo "Empty response body"
         fi
         
+        # Clean up
+        rm -f "$response_file"
         return 0
     else
         echo -e "${RED}✗ Failed! Expected status code $expected_status but got $status_code${NC}"
         
         # Print response for debugging
         echo "Error response:"
-        cat response.json
+        if [ "$status_code" = "000" ]; then
+            echo "Connection failed or timed out. The service may not be running or accessible."
+        elif [ -s "$response_file" ]; then
+            cat "$response_file"
+        else
+            echo "Empty response body"
+        fi
         
+        # Clean up
+        rm -f "$response_file"
         return 1
     fi
 }
@@ -105,14 +122,12 @@ main() {
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}All tests passed successfully!${NC}"
         echo -e "${GREEN}Deployment verification complete.${NC}"
-        # Clean up
-        rm -f response.json
+        # No need to clean up, already done in test_endpoint
         exit 0
     else
         echo -e "${RED}$failed test(s) failed!${NC}"
         echo -e "${RED}Deployment verification failed.${NC}"
-        # Clean up
-        rm -f response.json
+        # No need to clean up, already done in test_endpoint
         exit 1
     fi
 }
