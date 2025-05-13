@@ -225,6 +225,69 @@ jobs:
             exit 1
           fi
 
+      - name: Create Swap Configuration
+        id: create_config
+        if: steps.smoke_test.outputs.smoke_test_result == '0'
+        run: |
+          cd ecommerce-infra
+          echo "Creating swap configuration since smoke test passed..."
+
+          # Set weights based on active environment
+          if [ "${{ steps.identify.outputs.active }}" == "blue" ]; then
+            BLUE_WEIGHT=0
+            GREEN_WEIGHT=100
+          else
+            BLUE_WEIGHT=100
+            GREEN_WEIGHT=0
+          fi
+
+          # Create swap-weights.json with swapped weights
+          cat > swap-weights.json << EOF
+          {
+            "Comment": "Blue/Green swap: sending traffic to ${{ steps.identify.outputs.inactive }} environment",
+            "Changes": [
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "${{ env.DOMAIN_NAME }}",
+                  "Type": "A",
+                  "SetIdentifier": "uat1",
+                  "Weight": ${BLUE_WEIGHT},
+                  "TTL": 60,
+                  "ResourceRecords": [ { "Value": "${{ steps.identify.outputs.blue_ip }}" } ]
+                }
+              },
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "${{ env.DOMAIN_NAME }}",
+                  "Type": "A",
+                  "SetIdentifier": "uat2",
+                  "Weight": ${GREEN_WEIGHT},
+                  "TTL": 60,
+                  "ResourceRecords": [ { "Value": "${{ steps.identify.outputs.green_ip }}" } ]
+                }
+              }
+            ]
+          }
+          EOF
+
+          echo "Created swap configuration:"
+          cat swap-weights.json
+
+      - name: Apply Route53 Changes
+        if: steps.smoke_test.outputs.smoke_test_result == '0'
+        run: |
+          cd ecommerce-infra
+          echo "Applying Route53 changes to swap traffic from ${{ steps.identify.outputs.active }} to ${{ steps.identify.outputs.inactive }}..."
+
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id ${{ env.HOSTED_ZONE_ID }} \
+            --change-batch file://swap-weights.json
+
+          echo "Route53 changes applied successfully"
+          echo "Traffic is now being directed to the ${{ steps.identify.outputs.inactive }} environment"
+
   deploy-prod:
     needs: detect-changes
     if: needs.detect-changes.outputs.prod-changes == 'true'
