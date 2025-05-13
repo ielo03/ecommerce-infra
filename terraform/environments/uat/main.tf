@@ -2,16 +2,8 @@ provider "aws" {
   region = var.region
 }
 
-# Remote state configuration
+# Local state configuration
 terraform {
-  backend "s3" {
-    bucket         = "ecommerce-terraform-state-ielo03"
-    key            = "uat/terraform.tfstate"
-    region         = "us-west-2"
-    dynamodb_table = "ecommerce-terraform-locks"
-    encrypt        = true
-  }
-
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -125,6 +117,24 @@ module "user_db" {
   allowed_security_groups = [module.eks.node_security_group_id]
 }
 
+# RDS Database for Notes Application
+module "notes_db" {
+  source = "../../modules/rds"
+
+  environment            = local.environment
+  db_name                = "notes_app_uat"
+  db_username            = var.db_username
+  db_password            = var.db_password
+  db_instance_class      = var.db_instance_class
+  db_allocated_storage   = var.db_allocated_storage
+  db_engine              = "mysql"
+  db_engine_version      = "8.0"
+  db_parameter_group_family = "mysql8.0"
+  vpc_id                 = module.vpc.vpc_id
+  subnet_ids             = module.vpc.private_subnets
+  allowed_security_groups = [module.eks.node_security_group_id]
+}
+
 # Outputs
 output "vpc_id" {
   description = "The ID of the VPC"
@@ -169,4 +179,9 @@ output "order_db_endpoint" {
 output "user_db_endpoint" {
   description = "The endpoint of the user database"
   value       = module.user_db.db_endpoint
+}
+
+output "notes_db_endpoint" {
+  description = "The endpoint of the notes application database"
+  value       = module.notes_db.db_endpoint
 }

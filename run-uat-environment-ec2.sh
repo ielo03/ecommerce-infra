@@ -68,10 +68,28 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Get RDS endpoint and credentials from AWS
+echo "Retrieving RDS endpoint and credentials from AWS..."
+RDS_SECRET_ARN=$(aws secretsmanager list-secrets --query "SecretList[?Name=='uat/notes_app_uat/credentials'].ARN" --output text)
+
+if [ -z "$RDS_SECRET_ARN" ]; then
+    echo "Error: Could not find RDS credentials in AWS Secrets Manager"
+    echo "Make sure to run 'terraform apply' in the terraform/environments/uat directory first"
+    exit 1
+fi
+
+RDS_SECRET=$(aws secretsmanager get-secret-value --secret-id "$RDS_SECRET_ARN" --query SecretString --output text)
+DB_HOST=$(echo $RDS_SECRET | jq -r '.host')
+DB_USER=$(echo $RDS_SECRET | jq -r '.username')
+DB_PASSWORD=$(echo $RDS_SECRET | jq -r '.password')
+DB_NAME=$(echo $RDS_SECRET | jq -r '.dbname')
+
+echo "Retrieved RDS endpoint: $DB_HOST"
+
 # Create a completely new docker-compose file
 TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
-# Create the new docker-compose file with the correct database name
+# Create the new docker-compose file without MySQL (using RDS instead)
 cat > "$TEMP_COMPOSE_FILE" << EOF
 version: "3.8"
 
@@ -100,9 +118,9 @@ services:
           "http://localhost:8080/api-gateway/health",
         ]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
 
   frontend:
     image: ${ECR_REGISTRY}/frontend:\${FRONTEND_VERSION:-1.0.0}
@@ -116,9 +134,9 @@ services:
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
 
   backend:
     image: ${ECR_REGISTRY}/backend:\${BACKEND_VERSION:-1.0.0}
@@ -127,64 +145,37 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=8082
-      - DB_HOST=mysql
-      - DB_USER=root
-      - DB_PASSWORD=password
-      - DB_NAME=notes_app_uat
-      - DB_CONNECTION_RETRIES=10
+      - DB_HOST=${DB_HOST}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_CONNECTION_RETRIES=20
       - DB_CONNECTION_RETRY_DELAY=5000
-    depends_on:
-      mysql:
-        condition: service_healthy
     networks:
       - app-network
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-
-  mysql:
-    image: mysql:8.0
-    command: --default-authentication-plugin=mysql_native_password
-    ports:
-      - "3306:3306"
-    environment:
-      - MYSQL_ROOT_PASSWORD=password
-      - MYSQL_DATABASE=notes_app_uat
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - app-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "root",
-          "-ppassword",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
 
 networks:
   app-network:
     driver: bridge
-
-volumes:
-  mysql-data:
 EOF
 
 echo "Created new docker-compose file at $TEMP_COMPOSE_FILE"
 
 # Run docker-compose with the new file
-echo "Starting the UAT environment..."
+echo "Starting the UAT environment with RDS database..."
+echo "Removing existing containers..."
 docker-compose -f "$TEMP_COMPOSE_FILE" down
+echo "Starting new containers..."
 docker-compose -f "$TEMP_COMPOSE_FILE" up "$@" -d
+
+# Wait for services to initialize
+echo "Waiting for services to initialize (30 seconds)..."
+sleep 30
+echo "UAT environment should be ready now."
+echo "Using RDS database at: $DB_HOST"
