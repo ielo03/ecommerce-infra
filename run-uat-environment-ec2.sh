@@ -174,8 +174,4 @@ docker-compose -f "$TEMP_COMPOSE_FILE" down
 echo "Starting new containers..."
 docker-compose -f "$TEMP_COMPOSE_FILE" up "$@" -d
 
-# Wait for services to initialize
-echo "Waiting for services to initialize (30 seconds)..."
-sleep 30
-echo "UAT environment should be ready now."
 echo "Using RDS database at: $DB_HOST"
