@@ -1,5 +1,4 @@
-[pp[l]='//'./>?
-.#!/bin/bash
+#!/bin/bash
 
 # Script to run the UAT environment on Amazon Linux 2023 EC2 instance
 # This version includes ECR authentication and fixes for common issues
@@ -70,7 +69,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Create a completely new docker-compose file
-TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose-uat.yml"
+TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
 # Create the new docker-compose file with the correct database name
 cat > "$TEMP_COMPOSE_FILE" << EOF
