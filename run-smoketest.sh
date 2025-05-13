@@ -123,12 +123,12 @@ main() {
         echo -e "${GREEN}All tests passed successfully!${NC}"
         echo -e "${GREEN}Deployment verification complete.${NC}"
         # No need to clean up, already done in test_endpoint
-        exit 0
+        return 0
     else
         echo -e "${RED}$failed test(s) failed!${NC}"
         echo -e "${RED}Deployment verification failed.${NC}"
         # No need to clean up, already done in test_endpoint
-        exit 1
+        return 1
     fi
 }
 
