@@ -1,7 +1,6 @@
 # Terraform
 **/.terraform/*
-*.tfstate
-*.tfstate.*
+# Terraform state files are now tracked in git
 *.tfvars
 *.tfvars.json
 crash.log
