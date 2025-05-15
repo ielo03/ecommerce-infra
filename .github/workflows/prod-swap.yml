@@ -1,4 +1,4 @@
-name: Production Blue-Green Swap
+name: Prod Blue-Green Swap
 permissions:
   contents: write
 
