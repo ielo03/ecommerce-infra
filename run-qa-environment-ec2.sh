@@ -68,6 +68,35 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Ensure the mysql-init directory exists
+MYSQL_INIT_DIR="$SCRIPT_DIR/mysql-init"
+if [ ! -d "$MYSQL_INIT_DIR" ]; then
+    echo "Creating MySQL initialization directory..."
+    mkdir -p "$MYSQL_INIT_DIR"
+    
+    # Create init.sql if it doesn't exist
+    if [ ! -f "$MYSQL_INIT_DIR/init.sql" ]; then
+        echo "Creating MySQL initialization script..."
+        cat > "$MYSQL_INIT_DIR/init.sql" << EOF
+-- Grant privileges to root user for connections from any host
+CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+
+-- Create and initialize the notes_app database
+CREATE DATABASE IF NOT EXISTS notes_app;
+USE notes_app;
+
+-- Create a simple notes table if it doesn't exist
+CREATE TABLE IF NOT EXISTS notes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+EOF
+    fi
+fi
+
 # Create a completely new docker-compose file
 TEMP_COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
@@ -147,14 +176,16 @@ services:
 
   mysql:
     image: mysql:8.0
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --bind-address=0.0.0.0
     ports:
       - "3306:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=password
       - MYSQL_DATABASE=notes_app
+      - MYSQL_ROOT_HOST=%  # Allow connections from any host
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
     networks:
       - app-network
     healthcheck:
