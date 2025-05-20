@@ -220,7 +220,7 @@ echo "Created new docker-compose file at $TEMP_COMPOSE_FILE"
 # Run docker-compose with the new file
 echo "Starting the QA environment..."
 echo "Removing any existing containers and volumes..."
-docker-compose -f "$TEMP_COMPOSE_FILE" down -v
+docker-compose -f "$TEMP_COMPOSE_FILE" down
 docker volume rm mysql-data 2>/dev/null || true
 echo "Starting new containers..."
 docker-compose -f "$TEMP_COMPOSE_FILE" up "$@" -d
