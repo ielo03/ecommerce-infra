@@ -176,16 +176,18 @@ services:
 
   mysql:
     image: mysql:8.0
-    command: --default-authentication-plugin=mysql_native_password --bind-address=0.0.0.0
+    command: --default-authentication-plugin=mysql_native_password
     ports:
       - "3306:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=password
       - MYSQL_DATABASE=notes_app
       - MYSQL_ROOT_HOST=%  # Allow connections from any host
+      - MYSQL_ALLOW_EMPTY_PASSWORD=true  # For easier debugging
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql-init:/docker-entrypoint-initdb.d
+      - ./mysql-init/my.cnf:/etc/mysql/conf.d/custom.cnf
     networks:
       - app-network
     healthcheck:
@@ -217,5 +219,13 @@ echo "Created new docker-compose file at $TEMP_COMPOSE_FILE"
 
 # Run docker-compose with the new file
 echo "Starting the QA environment..."
-docker-compose -f "$TEMP_COMPOSE_FILE" down
+echo "Removing any existing containers and volumes..."
+docker-compose -f "$TEMP_COMPOSE_FILE" down -v
+docker volume rm mysql-data 2>/dev/null || true
+echo "Starting new containers..."
 docker-compose -f "$TEMP_COMPOSE_FILE" up "$@" -d
+
+# Wait for MySQL to be ready
+echo "Waiting for MySQL to initialize (30 seconds)..."
+sleep 30
+echo "QA environment should be ready now."
